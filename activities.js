@@ -83,27 +83,36 @@ const verbose = false
 function report(text) {
     if (verbose) console.log(text)
 }
-function returnUniqueCid(table, cid, startTime, groundspeed) {
-    var newCid = cid
+function returnUniqueCid(table, flight) {
+    var newCid = flight.cid
     while (true) {
         if (newCid in table) {
-            if (table[newCid].logon_time == startTime) {
+            var old = table[newCid]
+            if (old.logon_time == flight.logon_time) {
                 return [newCid, ID_ALREADY_ASSIGNED]
-            } else if (groundspeed > 50) { // assumed to just be dropped data in the middle, fill out as normal
-                report(`Pilot is mid flight - resuming their last flight (last id: ${newCid})`)
-                return [newCid, ID_RESUME_FLIGHT]
-            } else {
-                if (newCid == cid) {
-                    newCid = cid * 10
-                } else {
-                    newCid += 1
-                }
 
+            } else {
+                var condition = (((flight.flightplan && old.flightplan && (flight.flightplan == old.flightplan)) || flight.flightplan == null) && (flight.callsign == old.callsign))
+                // if (flight.log[0].groundspeed > 50 && condition == false) {
+                //     console.log(chalk.cyan(`Would previously have matched the flight for ${old.callsign} & ${flight.callsign}, but it doesn't meet new standards`))
+                // }
+                if (condition == true) { // assumed to just be dropped data in the middle, fill out as normal
+                    // if (flight.groundspeed > 50) { // assumed to just be dropped data in the middle, fill out as normal
+                    report(`Pilot is mid flight - resuming their last flight (last id: ${newCid})`)
+                    return [newCid, ID_RESUME_FLIGHT]
+                } else {
+                    if (newCid == flight.cid) {
+                        newCid = flight.cid * 10
+                    } else {
+                        newCid += 1
+                    }
+
+                }
             }
         } else {
 
-            var timeSinceStart = (new Date() - new Date(startTime)) / 1000
-            report(`Assigned new id to ${cid}: ${newCid}. Flight started ${timeSinceStart} seconds ago`)
+            var timeSinceStart = (new Date() - new Date(flight.logon_time)) / 1000
+            report(`Assigned new id to ${flight.cid}: ${newCid}. Flight started ${timeSinceStart} seconds ago`)
             return [newCid, ID_NEW_FLIGHT]
         }
     }
@@ -188,7 +197,7 @@ function mergeIdentities(table) {
                 result.forEach((pilot) => {
                     if (final[pilot.cid]) {
                         if (final[pilot.cid].logon_time != pilot.logon_time) {
-                            var [newCid, status] = returnUniqueCid(final, pilot.cid, pilot.logon_time, pilot.log[0].groundspeed)
+                            var [newCid, status] = returnUniqueCid(final, pilot)
                             if (status == ID_ALREADY_ASSIGNED) {
                                 final[newCid].log.push(pilot.log[0])
                             } else if (status == ID_NEW_FLIGHT) {
