@@ -57,7 +57,7 @@ function downloadLatestData() {
 function getNewest() {
     return new Promise(function (resolve, reject) {
         var newest = 0;
-        fs.readdir("./temp/", (err, files) => {
+        fs.readdir("./datafeed/", (err, files) => {
             // if (err) reject(err);
             if (files === undefined || files.length == 0) {
                 resolve(1)
@@ -113,7 +113,7 @@ function validReadings(oldest, newest) {
         var output = []
         var oldestUnix = Math.trunc(oldest.getTime() / 1000);
         var newestUnix = Math.trunc(newest.getTime() / 1000);
-        fs.readdir("./temp/", (err, files) => {
+        fs.readdir("./datafeed/", (err, files) => {
             if (err) throw err;
             if (files === undefined || files.length == 0) {
                 reject("no valid files")
