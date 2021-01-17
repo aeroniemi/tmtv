@@ -28,10 +28,10 @@
 
                 opacity: 0.2,
                 weight: 1
-            }//https://api.mapbox.com/styles/v1/aeroniemi/ckjyvdfe01dnc17ppgsl0riga/wmts?access_token=pk.eyJ1IjoiYWVyb25pZW1pIiwiYSI6ImNpdWJjeHY5djAwMGUyeW80ZTR4ZjgwN3MifQ.PkPF6NIAFU3fOZgDTpCHgA
+            }
         }
         var map = L.map('mapid').setView([51.55, -0.09], 7.5);
-        L.mapbox.accessToken = {{ { mapboxToken } }};
+        L.mapbox.accessToken = "{{ mapboxToken }}";
         var mapboxTiles = L.tileLayer('https://api.mapbox.com/styles/v1/aeroniemi/ckjyvdfe01dnc17ppgsl0riga/tiles/256/{z}/{x}/{y}?access_token=' + L.mapbox.accessToken, {
             attribution: '© <a href="https://www.mapbox.com/feedback/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
             tileSize: 512,

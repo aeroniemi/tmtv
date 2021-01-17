@@ -34,7 +34,6 @@ var parseResults = activities.parse().then((parseResults) => {
         var id = req.params.id
         var apiUrl = `/aircraft/${req.params.id}`
         res.render("aircraftById", { apiUrl: apiUrl })
-
     });
     app.get('/map/all', function (req, res, next) {
         res.render("generic", { apiUrl: "/aircraft/", mapboxToken: config.mapboxToken })
@@ -52,8 +51,7 @@ var parseResults = activities.parse().then((parseResults) => {
         }
 
         pilotsArray.forEach((flight) => {
-            // console.log(flight)
-            planes.features.push(activities.convertLogToGeoJson(flight.log))
+            planes.features.push(activities.convertFlightToGeoJson(flight))
         })
         res.send(planes)
 
@@ -81,9 +79,36 @@ var parseResults = activities.parse().then((parseResults) => {
             res.send(`Aircraft with id ${id} not found.`)
             // createError(404, `Aircraft with id ${id} not found.`)
         }
-
         // console.log(results.bodyTable, "hi")
+    });
+    app.get('/api/user/:cid', function (req, res, next) {
+        var planes = {
+            type: "FeatureCollection",
+            features: []
+        }
+        pilotsArray.forEach((flight) => {
+            if (flight.cid == req.params.cid) {
+                planes.features.push(activities.convertLogToGeoJson(flight.log))
+            }
+        })
+        res.send(planes)
 
     });
+    app.get('/api/airport/:icao', function (req, res, next) {
+        var planes = {
+            type: "FeatureCollection",
+            features: []
+        }
+        pilotsArray.forEach((flight) => {
+            if (flight.departure == req.params.icao) {
+                var plane = activities.convertLogToGeoJson(flight.log)
+                // plane.properties.departure
+                planes.features.push(activities.convertLogToGeoJson(flight.log))
+            } else if (flight.destination == req.params.icao) {
+                planes.features.push(activities.convertLogToGeoJson(flight.log))
+            }
+        })
+        res.send(planes)
 
+    });
 })

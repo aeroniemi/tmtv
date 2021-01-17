@@ -134,7 +134,7 @@ function validReadings(oldest, newest) {
 function assembleUsefulSubTable(image) {
     return new Promise(function (resolve, reject) {
         var name = image + ".json"
-        fs.readFile("./temp/" + name, (err, body) => {
+        fs.readFile("./datafeed/" + name, (err, body) => {
             if (err) reject(err)
             var results = JSON.parse(body)
             resolve(results)
@@ -158,8 +158,10 @@ function managePilot(pilot) {
             name: pilot.name,
             callsign: pilot.callsign,
             logon_time: pilot.logon_time,
+            flightplan: pilot.flight_plan,
             log: [currentLog]
         }
+        // console.log(outputPilot)
         resolve(outputPilot)
     })
 }
@@ -258,14 +260,32 @@ function parse() {
     })
 }
 exports.parse = parse
+
+function convertFlightToGeoJson(flight) {
+    var log = convertLogToGeoJson(flight.log)
+    // console.log(flight)
+    var depAirport = ""
+    var destAirport = ""
+    if (flight.flightplan != null) {
+        depAirport = flight.flightplan.departure
+        destAirport = flight.flightplan.destination
+    }
+    log.properties = {
+        depAirport: depAirport,
+        arrAirport: destAirport,
+        cid: flight.cid,
+        callsign: flight.callsign,
+        name: flight.name
+    }
+    return log
+}
+exports.convertFlightToGeoJson = convertFlightToGeoJson
+
 function convertLogToGeoJson(log, full, colour) {
     var coords = []
     log.forEach((position) => {
         coords.push([position.longitude, position.latitude])
     })
-    var style = { "stroke-width": 0.5 }
-    style.color = colour || randomColor()
-    // console.log(colour)
     if (full === true) {
         var geo = {
             type: "FeatureCollection",
@@ -277,7 +297,6 @@ function convertLogToGeoJson(log, full, colour) {
                         type: "LineString",
                         coordinates: coords
                     },
-                    style: style
                 }
             ]
         }
@@ -290,7 +309,6 @@ function convertLogToGeoJson(log, full, colour) {
                 type: "LineString",
                 coordinates: coords
             },
-            style: style
         }
         return geo
     }
