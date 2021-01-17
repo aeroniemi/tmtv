@@ -16,7 +16,11 @@ Then:
 - Run ``npm run watch``
 
 ### Making pretty maps
-- Make sure you have some data from the datafeed, then:
+- The construction of pretty maps is dependent on two things:
+    - Data - this comes from the datafeed, so you need to collect some before trying to use it
+    - A Mapbox API token
+        - Get this at https://mapbox.com/ - it should look something like ``pk.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx``. 
+        - Put it in ``config.js`` as ``mapboxToken``
 - Run ``npm run server``
 - Navigate to ``localhost:8080`` to find the maps server. 
 
