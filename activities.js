@@ -304,7 +304,7 @@ function convertLogToGeoJson(log, full, colour) {
                     properties: {},
                     geometry: {
                         type: "LineString",
-                        coordinates: coords
+                        coordinates: [coords]
                     },
                 }
             ]
@@ -324,3 +324,14 @@ function convertLogToGeoJson(log, full, colour) {
     return
 }
 exports.convertLogToGeoJson = convertLogToGeoJson
+
+function readSectors() {
+    return new Promise(function (resolve, reject) {
+        fs.readFile("./vatglasses/sectorsObj.json", (err, body) => {
+            if (err) reject(err)
+            var results = JSON.parse(body)
+            resolve(results)
+        })
+    })
+}
+exports.readSectors = readSectors

@@ -1,5 +1,6 @@
 const express = require('express')
 const exphbs = require('express-handlebars');
+const geo = require('geolib');
 const app = express()
 const port = 8080
 var activities = require('./activities.js')
@@ -11,10 +12,13 @@ helpers.json = function (context) {
 
 var pilotsArray = []
 var pilotsObj = {}
-var parseResults = activities.parse().then((parseResults) => {
+async function run() {
+    var sectors = await activities.readSectors()
+    var parseResults = await activities.parse()
     pilotsArray = parseResults.body
     pilotsObj = parseResults.bodyObj
     app.use('/static', express.static('static'))
+    app.use('/api/sector', express.static('vatglasses'))
     app.engine('handlebars', exphbs({ helpers, extname: '.hbs' }));
     app.set('view engine', 'handlebars');
     app.get('/', function (req, res) {
@@ -37,6 +41,9 @@ var parseResults = activities.parse().then((parseResults) => {
     });
     app.get('/map/all', function (req, res, next) {
         res.render("generic", { apiUrl: "/aircraft/", mapboxToken: config.mapboxToken })
+    });
+    app.get('/map/sector/:id', function (req, res, next) {
+        res.render("generic", { apiUrl: `/sector/${req.params.id}`, mapboxToken: config.mapboxToken })
     });
     app.get('/map/all/heat', function (req, res, next) {
         res.render("heat", { apiUrl: "/aircraft/heat" })
@@ -111,4 +118,47 @@ var parseResults = activities.parse().then((parseResults) => {
         res.send(planes)
 
     });
-})
+    app.get('/api/sector/:id', function (req, res, next) {
+        var sector = sectors[req.params.id]
+        if (typeof sector === undefined) {
+            res.send("error")
+        }
+        if (sector.top == 0) {
+            sector.top = 100000
+        }
+        // console.log(sector)
+        var planesInSector = []
+        var geoJson = {
+            type: "FeatureCollection",
+            features: [
+                {
+                    type: "Feature",
+                    properties: {},
+                    geometry: {
+                        type: "Polygon",
+                        coordinates: [sector.coordinates]
+                    },
+                }
+            ]
+        }
+        pilotsArray.forEach((flight) => {
+            var timeInSector = []
+            flight.log.some((point) => {
+                if (point.altitude > sector.base && point.altitude < sector.top) {
+                    var isInSectorHoriz = geo.isPointInPolygon({ latitude: point.latitude, longitude: point.longitude }, sector.coordinates);
+                    if (isInSectorHoriz === true) {
+                        console.log(`${flight.callsign} is in sector ${sector.name}`)
+                        planesInSector.push({ flight })
+                        geoJson.features.push(activities.convertFlightToGeoJson(flight))
+                        return
+                    }
+                }
+            })
+
+        })
+        res.send(geoJson)
+
+    });
+
+}
+run()

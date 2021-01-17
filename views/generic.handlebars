@@ -30,6 +30,12 @@
                 weight: 1
             }
         }
+        function onEachFeature(feature, layer) {
+            // does this feature have a property named popupContent?
+            if (feature.properties) {
+                layer.bindPopup(JSON.stringify(feature.properties));
+            }
+        }
         var map = L.map('mapid').setView([51.55, -0.09], 7.5);
         L.mapbox.accessToken = "{{ mapboxToken }}";
         var mapboxTiles = L.tileLayer('https://api.mapbox.com/styles/v1/aeroniemi/ckjyvdfe01dnc17ppgsl0riga/tiles/256/{z}/{x}/{y}?access_token=' + L.mapbox.accessToken, {
@@ -38,21 +44,27 @@
             zoomOffset: -1
         });
         map.addLayer(mapboxTiles);
-        let xhr = new XMLHttpRequest();
-        xhr.open('GET', '/api{{apiUrl}}');
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.responseType = 'json';
-        xhr.onload = function () {
-            if (xhr.status !== 200) return
-            console.log("got it")
-            new L.geoJSON(xhr.response, { style: style }).addTo(map);
-        };
-        xhr.send();
-
-        map.on('click', function (ev) {
-            var coordinates = map.mouseEventToLatLng(ev.originalEvent);
-            console.log(coordinates.lat + ', ' + coordinates.lng, map.getZoom());
-        });
+        function requestJson(file, callback) {
+            let xhr = new XMLHttpRequest();
+            xhr.open('GET', file);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.responseType = 'json';
+            xhr.onload = function () {
+                if (xhr.status !== 200) return
+                console.log("got it")
+                callback(xhr.response)
+            };
+            xhr.send();
+        }
+        function addPlanes(res) {
+            new L.geoJSON(res, { style: style }).addTo(map);
+        }
+        function addSectors(res) {
+            new L.geoJSON(res, { onEachFeature: onEachFeature }).addTo(map);
+            console.log("sectors are in")
+        }
+        //requestJson('/api/sector/sectors.geojson', addSectors)
+        requestJson('/api{{apiUrl}}', addPlanes)
     </script>
 </body>
 
