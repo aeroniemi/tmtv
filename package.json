@@ -1,0 +1,21 @@
+{
+  "name": "workload",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "watch": "node ./capture.js watch",
+    "server": "node ./server.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "distinct-colors": "^3.0.0",
+    "express": "^4.17.1",
+    "express-handlebars": "^5.2.0",
+    "open": "^7.3.1",
+    "randomcolor": "^0.6.2",
+    "yargs": "^16.2.0"
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,59 @@
+<html>
+
+<head>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+        integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
+        crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+        integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+        crossorigin=""></script>
+    <script src='https://api.mapbox.com/mapbox.js/v3.3.1/mapbox.js'></script>
+    <link href='https://api.mapbox.com/mapbox.js/v3.3.1/mapbox.css' rel='stylesheet' />
+    {{!-- <script type="text/javascript" src="http://maps.stamen.com/js/tile.stamen.js?v1.3.0"></script> --}}
+</head>
+
+<body>
+    <div id="mapid"></div>
+    <style>
+        #mapid {
+            height: 100%;
+        }
+
+    </style>
+    <script>
+        //{{!-- color: "#020122", --}}
+        function style(feature) {
+            return {
+                color: "#EDFF86",
+
+                opacity: 0.2,
+                weight: 1
+            }//https://api.mapbox.com/styles/v1/aeroniemi/ckjyvdfe01dnc17ppgsl0riga/wmts?access_token=pk.eyJ1IjoiYWVyb25pZW1pIiwiYSI6ImNpdWJjeHY5djAwMGUyeW80ZTR4ZjgwN3MifQ.PkPF6NIAFU3fOZgDTpCHgA
+        }
+        var map = L.map('mapid').setView([51.55, -0.09], 7.5);
+        L.mapbox.accessToken = {{ { mapboxToken } }};
+        var mapboxTiles = L.tileLayer('https://api.mapbox.com/styles/v1/aeroniemi/ckjyvdfe01dnc17ppgsl0riga/tiles/256/{z}/{x}/{y}?access_token=' + L.mapbox.accessToken, {
+            attribution: '© <a href="https://www.mapbox.com/feedback/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            tileSize: 512,
+            zoomOffset: -1
+        });
+        map.addLayer(mapboxTiles);
+        let xhr = new XMLHttpRequest();
+        xhr.open('GET', '/api{{apiUrl}}');
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.responseType = 'json';
+        xhr.onload = function () {
+            if (xhr.status !== 200) return
+            console.log("got it")
+            new L.geoJSON(xhr.response, { style: style }).addTo(map);
+        };
+        xhr.send();
+
+        map.on('click', function (ev) {
+            var coordinates = map.mouseEventToLatLng(ev.originalEvent);
+            console.log(coordinates.lat + ', ' + coordinates.lng, map.getZoom());
+        });
+    </script>
+</body>
+
+</html>

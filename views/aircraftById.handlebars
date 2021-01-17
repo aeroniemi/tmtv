@@ -1,0 +1,39 @@
+<html>
+
+<head>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+        integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
+        crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+        integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+        crossorigin=""></script>
+    <script></script>
+    <script type="text/javascript" src="http://maps.stamen.com/js/tile.stamen.js?v1.3.0"></script>
+</head>
+
+<body>
+    <div id="mapid"></div>
+    <style>
+        #mapid {
+            height: 100%;
+        }
+
+    </style>
+    <script>
+        var map = L.map('mapid').setView([51.505, -0.09], 10);
+        var layer = new L.StamenTileLayer("toner");
+        map.addLayer(layer);
+        let xhr = new XMLHttpRequest();
+        xhr.open('GET', '/api/aircraft/{{params.id}}');
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.responseType = 'json';
+        xhr.onload = function () {
+            if (xhr.status !== 200) return
+            console.log("got it")
+            new L.geoJSON(xhr.response).addTo(map);
+        };
+        xhr.send();
+    </script>
+</body>
+
+</html>
