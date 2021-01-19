@@ -1,43 +1,42 @@
 <html>
+  <head>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+      integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
+      crossorigin=""
+    />
+    <script
+      src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+      integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+      crossorigin=""
+    ></script>
+    <script src="https://api.mapbox.com/mapbox.js/v3.3.1/mapbox.js"></script>
+    <link
+      href="https://api.mapbox.com/mapbox.js/v3.3.1/mapbox.css"
+      rel="stylesheet"
+    />
+    {{! <script type="text/javascript" src="http://maps.stamen.com/js/tile.stamen.js?v1.3.0"></script> }}
+  </head>
 
-<head>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
-        integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
-        crossorigin="" />
-    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
-        integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
-        crossorigin=""></script>
-    <script src='https://api.mapbox.com/mapbox.js/v3.3.1/mapbox.js'></script>
-    <link href='https://api.mapbox.com/mapbox.js/v3.3.1/mapbox.css' rel='stylesheet' />
-    {{!-- <script type="text/javascript" src="http://maps.stamen.com/js/tile.stamen.js?v1.3.0"></script> --}}
-</head>
-
-<body>
+  <body>
     <div id="mapid"></div>
     <style>
-        #mapid {
+      #mapid {
             height: 100%;
         }
-
+        .label {
+          color:#ffffff;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          font-weight: bold;
+          text-align: center;
+        }
     </style>
     <script>
-        //{{!-- color: "#020122", --}}
-        function style(feature) {
-            return {
-                color: "#EDFF86",
-
-                opacity: 0.2,
-                weight: 1
-            }
-        }
-        function onEachFeature(feature, layer) {
-            // does this feature have a property named popupContent?
-            if (feature.properties) {
-                layer.bindPopup(JSON.stringify(feature.properties));
-            }
-        }
-        var map = L.map('mapid').setView([51.55, -0.09], 7.5);
-        L.mapbox.accessToken = "{{ mapboxToken }}";
+      var map = L.map('mapid').setView([51.55, -0.09], 7.5);
+        L.mapbox.accessToken = `{{
+        mapboxToken
+      }}`;
         var mapboxTiles = L.tileLayer('https://api.mapbox.com/styles/v1/aeroniemi/ckjyvdfe01dnc17ppgsl0riga/tiles/256/{z}/{x}/{y}?access_token=' + L.mapbox.accessToken, {
             attribution: '© <a href="https://www.mapbox.com/feedback/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
             tileSize: 512,
@@ -51,21 +50,75 @@
             xhr.responseType = 'json';
             xhr.onload = function () {
                 if (xhr.status !== 200) return
-                console.log("got it")
                 callback(xhr.response)
             };
             xhr.send();
         }
+        var currentPlanes = null
+        var lgFac = L.layerGroup().addTo(map)
+        var lgLabels = L.layerGroup().addTo(map)
         function addPlanes(res) {
-            new L.geoJSON(res, { style: style }).addTo(map);
+          lgFac.clearLayers();
+          lgLabels.clearLayers();
+          var newLayer = new L.geoJSON(res, { onEachFeature: function (feature, layer) {
+          if (layer instanceof L.Polygon) {
+            new L.marker(feature.properties.center.reverse(), {
+              icon: L.divIcon({
+                className: 'label',
+                html: res.facilities[feature.properties.owner].name,
+                iconAnchor: [15,10],
+                iconSize: [30,20]
+                             })
+            }).addTo(lgLabels)
+            //new L.marker(feature.properties.center).addTo(map)
+          }
+            // does this feature have a property named popupContent?
+            if (feature.properties) {
+                layer.bindPopup(JSON.stringify(feature.properties));
+            }
+        },pointToLayer: (feature, latlng) => {
+                  //console.log(feature)
+                    if (feature.properties.radius) {
+                        return new L.Circle(latlng, feature.properties.radius*1852).addTo(lgFac);
+                    }
+                }, style: function(feature) {
+                  return {color:res.facilities[feature.properties.owner].colour, stroke: false}
+                } })
+                if (currentPlanes != null) {
+            map.removeLayer(currentPlanes)
+          }
+          currentPlanes = newLayer
+          currentPlanes.addTo(map);
+          
         }
         function addSectors(res) {
-            new L.geoJSON(res, { onEachFeature: onEachFeature }).addTo(map);
+            new L.geoJSON(res, {
+                onEachFeature: onEachFeature, pointToLayer: (feature, latlng) => {
+                  //console.log(feature)
+                    if (feature.properties.radius) {
+                        return new L.Circle(latlng, feature.properties.radius*1852).addTo(lgFac);
+                    } else {
+                        //return new L.Marker(latlng);
+                    }
+                },
+                style: function(feature) {
+                  //console.log(`Feature ${feature.properties.id} has colour ${res.colours[feature.properties.owner].colour}`)
+                  return {fillColor:"#ff00FF", stroke: false, weight:0}
+                  //return {color:res.colours[feature.properties.owner].colour}
+                }
+        
+            }).addTo(map);
             console.log("sectors are in")
         }
-        //requestJson('/api/sector/sectors.geojson', addSectors)
-        requestJson('/api{{apiUrl}}', addPlanes)
+      {{#if additionalFunctions}}
+        {{{additionalFunctions}}}
+      {{/if}}
+      requestJson(`/api/{{
+        apiUrl
+      }}`, addPlanes)
+      setInterval(requestJson, 15*1000, `/api/{{
+        apiUrl
+      }}`, addPlanes)
     </script>
-</body>
-
+  </body>
 </html>

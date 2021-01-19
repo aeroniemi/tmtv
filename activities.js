@@ -3,7 +3,7 @@ const fs = require('fs');
 const chalk = require('chalk')
 var randomColor = require('randomcolor')
 const apiUrl = "https://data.vatsim.net/v3/vatsim-data.json";
-
+const turf = require("@turf/turf")
 // -----------------------------------------------------------------------------
 // Download related
 // -----------------------------------------------------------------------------
@@ -33,14 +33,12 @@ function downloadLatestData() {
                 var fileName = date + ".json";
                 fs.mkdir('./temp/', { recursive: true }, (err) => { if (err) throw err });
                 try {
-
-
                     fs.writeFile("./temp/" + fileName, JSON.stringify(data), "utf8", function (err) {
                         if (err) {
                             console.error(err);
                             reject(err);
                         };
-                        resolve(fileName);
+                        resolve(data);
                     });
                 } catch (e) {
                     reject(e)
@@ -187,7 +185,7 @@ function managePilots(data) {
 
 function mergeIdentities(table) {
     return new Promise(function (resolve, reject) {
-
+        // console.log(table)
         var promises = table.map(function (ele) {
             return managePilots(ele)
         })
@@ -263,7 +261,7 @@ function parse() {
                     body: array,
                     bodyObj: res
                 }
-                console.log("accepted the promise")
+                // console.log("accepted the promise")
                 acc(parseResults)
             })
     })
@@ -330,8 +328,55 @@ function readSectors() {
         fs.readFile("./vatglasses/sectorsObj.json", (err, body) => {
             if (err) reject(err)
             var results = JSON.parse(body)
+            for (key in results) {
+                var sec = results[key]
+                if (sec.isCircle === false) {
+                    results[key].geoJson = turf.polygon([sec.coordinates], {
+                        base: sec.base,
+                        top: sec.top,
+                        name: sec.name
+                    })
+                } else {
+                    results[key].geoJson = turf.point(sec.coordinates, {
+                        base: sec.base,
+                        top: sec.top,
+                        name: sec.name,
+                        radius: sec.radius
+                    })
+                }
+            }
+
             resolve(results)
         })
     })
 }
+function readControllers() {
+    return new Promise(function (resolve, reject) {
+        fs.readFile("./vatglasses/controllers.json", (err, body) => {
+            if (err) reject(err)
+            var results = JSON.parse(body)
+            resolve(results)
+        })
+    })
+}
+function readInheritance() {
+    return new Promise(function (resolve, reject) {
+        fs.readFile("./vatglasses/inheritance.json", (err, body) => {
+            if (err) reject(err)
+            var results = JSON.parse(body)
+            resolve(results)
+        })
+    })
+}
+// function readSectors() {
+//     return new Promise(function (resolve, reject) {
+//         Promise.all([readSectors2, readControllers, readInheritance]).then((results) => {
+//             console.log(results)
+//             resolve(results)
+//         })
+//     })
+// }
+
 exports.readSectors = readSectors
+exports.readControllers = readControllers
+exports.readInheritance = readInheritance
