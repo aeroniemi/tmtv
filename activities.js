@@ -1,326 +1,393 @@
-const https = require('https');
-const fs = require('fs');
-const chalk = require('chalk')
-var randomColor = require('randomcolor')
+const https = require("https");
+const fs = require("fs");
+const chalk = require("chalk");
+var randomColor = require("randomcolor");
 const apiUrl = "https://data.vatsim.net/v3/vatsim-data.json";
-
+const turf = require("@turf/turf");
 // -----------------------------------------------------------------------------
 // Download related
 // -----------------------------------------------------------------------------
 function downloadLatestData() {
-    return new Promise(function (resolve, reject) {
-        https.get(apiUrl, function (res) {
-            var body = '';
-            res.on('data', function (chunk) {
-                body += chunk;
-            });
-            res.on('end', function () {
-                try {
-                    var data = JSON.parse(body);
-
-                } catch (e) {
-                    reject(e)
-                    return
-                }
-                try {
-                    var date = Math.trunc(new Date(data.general.update_timestamp).getTime() / 1000);
-
-                } catch (e) {
-                    reject(e)
-                    return
-                }
-
-                var fileName = date + ".json";
-                fs.mkdir('./temp/', { recursive: true }, (err) => { if (err) throw err });
-                try {
-
-
-                    fs.writeFile("./temp/" + fileName, JSON.stringify(data), "utf8", function (err) {
-                        if (err) {
-                            console.error(err);
-                            reject(err);
-                        };
-                        resolve(fileName);
-                    });
-                } catch (e) {
-                    reject(e)
-                    return
-                }
-
-            });
-        }).on('error', function (e) {
-            console.error("Got an error: ", e);
+  return new Promise(function (resolve, reject) {
+    https
+      .get(apiUrl, function (res) {
+        var body = "";
+        res.on("data", function (chunk) {
+          body += chunk;
+        });
+        res.on("end", function () {
+          try {
+            var data = JSON.parse(body);
+          } catch (e) {
             reject(e);
+            return;
+          }
+          try {
+            var date = Math.trunc(
+              new Date(data.general.update_timestamp).getTime() / 1000
+            );
+          } catch (e) {
+            reject(e);
+            return;
+          }
+
+          var fileName = date + ".json";
+          fs.mkdir("./temp/", { recursive: true }, (err) => {
+            if (err) throw err;
+          });
+          try {
+            fs.writeFile(
+              "./temp/" + fileName,
+              JSON.stringify(data),
+              "utf8",
+              function (err) {
+                if (err) {
+                  console.error(err);
+                  reject(err);
+                }
+                resolve(data);
+              }
+            );
+          } catch (e) {
+            reject(e);
+            return;
+          }
         });
-    });
-};
+      })
+      .on("error", function (e) {
+        console.error("Got an error: ", e);
+        reject(e);
+      });
+  });
+}
 function getNewest() {
-    return new Promise(function (resolve, reject) {
-        var newest = 0;
-        fs.readdir("./datafeed/", (err, files) => {
-            // if (err) reject(err);
-            if (files === undefined || files.length == 0) {
-                resolve(1)
-                return
-            }
-            newest = Math.max(...files.map(function (file) {
-                return parseInt(file.substring(0, file.length - 5));
-            }));
-            resolve(newest);
-            return
-        });
+  return new Promise(function (resolve, reject) {
+    var newest = 0;
+    fs.readdir("./datafeed/", (err, files) => {
+      // if (err) reject(err);
+      if (files === undefined || files.length == 0) {
+        resolve(1);
+        return;
+      }
+      newest = Math.max(
+        ...files.map(function (file) {
+          return parseInt(file.substring(0, file.length - 5));
+        })
+      );
+      resolve(newest);
+      return;
     });
-};
-exports.downloadLatestData = downloadLatestData
-exports.getNewest = getNewest
+  });
+}
+exports.downloadLatestData = downloadLatestData;
+exports.getNewest = getNewest;
 // -----------------------------------------------------------------------------
 // Parse-related
 // -----------------------------------------------------------------------------
-const ID_RESUME_FLIGHT = 2
-const ID_NEW_FLIGHT = 1
-const ID_ALREADY_ASSIGNED = 0
-const verbose = false
+const ID_RESUME_FLIGHT = 2;
+const ID_NEW_FLIGHT = 1;
+const ID_ALREADY_ASSIGNED = 0;
+const verbose = false;
 function report(text) {
-    if (verbose) console.log(text)
+  if (verbose) console.log(text);
 }
 function returnUniqueCid(table, flight) {
-    var newCid = flight.cid
-    while (true) {
-        if (newCid in table) {
-            var old = table[newCid]
-            if (old.logon_time == flight.logon_time) {
-                return [newCid, ID_ALREADY_ASSIGNED]
-
-            } else {
-                var condition = (((flight.flightplan && old.flightplan && (flight.flightplan == old.flightplan)) || flight.flightplan == null) && (flight.callsign == old.callsign))
-                // if (flight.log[0].groundspeed > 50 && condition == false) {
-                //     console.log(chalk.cyan(`Would previously have matched the flight for ${old.callsign} & ${flight.callsign}, but it doesn't meet new standards`))
-                // }
-                if (condition == true) { // assumed to just be dropped data in the middle, fill out as normal
-                    // if (flight.groundspeed > 50) { // assumed to just be dropped data in the middle, fill out as normal
-                    report(`Pilot is mid flight - resuming their last flight (last id: ${newCid})`)
-                    return [newCid, ID_RESUME_FLIGHT]
-                } else {
-                    if (newCid == flight.cid) {
-                        newCid = flight.cid * 10
-                    } else {
-                        newCid += 1
-                    }
-
-                }
-            }
+  var newCid = flight.cid;
+  while (true) {
+    if (newCid in table) {
+      var old = table[newCid];
+      if (old.logon_time == flight.logon_time) {
+        return [newCid, ID_ALREADY_ASSIGNED];
+      } else {
+        var condition =
+          ((flight.flightplan &&
+            old.flightplan &&
+            flight.flightplan == old.flightplan) ||
+            flight.flightplan == null) &&
+          flight.callsign == old.callsign;
+        // if (flight.log[0].groundspeed > 50 && condition == false) {
+        //     console.log(chalk.cyan(`Would previously have matched the flight for ${old.callsign} & ${flight.callsign}, but it doesn't meet new standards`))
+        // }
+        if (condition == true) {
+          // assumed to just be dropped data in the middle, fill out as normal
+          // if (flight.groundspeed > 50) { // assumed to just be dropped data in the middle, fill out as normal
+          report(
+            `Pilot is mid flight - resuming their last flight (last id: ${newCid})`
+          );
+          return [newCid, ID_RESUME_FLIGHT];
         } else {
-
-            var timeSinceStart = (new Date() - new Date(flight.logon_time)) / 1000
-            report(`Assigned new id to ${flight.cid}: ${newCid}. Flight started ${timeSinceStart} seconds ago`)
-            return [newCid, ID_NEW_FLIGHT]
+          if (newCid == flight.cid) {
+            newCid = flight.cid * 10;
+          } else {
+            newCid += 1;
+          }
         }
+      }
+    } else {
+      var timeSinceStart = (new Date() - new Date(flight.logon_time)) / 1000;
+      report(
+        `Assigned new id to ${flight.cid}: ${newCid}. Flight started ${timeSinceStart} seconds ago`
+      );
+      return [newCid, ID_NEW_FLIGHT];
     }
+  }
 }
 function validReadings(oldest, newest) {
-    return new Promise(function (resolve, reject) {
-        var output = []
-        var oldestUnix = Math.trunc(oldest.getTime() / 1000);
-        var newestUnix = Math.trunc(newest.getTime() / 1000);
-        fs.readdir("./datafeed/", (err, files) => {
-            if (err) throw err;
-            if (files === undefined || files.length == 0) {
-                reject("no valid files")
-            }
-            var images = files.map(function (file) {
-                return parseInt(file.substring(0, file.length - 5));
-            })
-            images.forEach((image) => {
-                if (image > oldestUnix && image < newestUnix) {
-                    output.push(image)
-                }
-            })
-            resolve(output)
-        })
-    })
+  return new Promise(function (resolve, reject) {
+    var output = [];
+    var oldestUnix = Math.trunc(oldest.getTime() / 1000);
+    var newestUnix = Math.trunc(newest.getTime() / 1000);
+    fs.readdir("./datafeed/", (err, files) => {
+      if (err) throw err;
+      if (files === undefined || files.length == 0) {
+        reject("no valid files");
+      }
+      var images = files.map(function (file) {
+        return parseInt(file.substring(0, file.length - 5));
+      });
+      images.forEach((image) => {
+        if (image > oldestUnix && image < newestUnix) {
+          output.push(image);
+        }
+      });
+      resolve(output);
+    });
+  });
 }
 
 function assembleUsefulSubTable(image) {
-    return new Promise(function (resolve, reject) {
-        var name = image + ".json"
-        fs.readFile("./datafeed/" + name, (err, body) => {
-            if (err) reject(err)
-            var results = JSON.parse(body)
-            resolve(results)
-        })
-    })
+  return new Promise(function (resolve, reject) {
+    var name = image + ".json";
+    fs.readFile("./datafeed/" + name, (err, body) => {
+      if (err) reject(err);
+      var results = JSON.parse(body);
+      resolve(results);
+    });
+  });
 }
 
 function managePilot(pilot) {
-    return new Promise(function (resolve, reject) {
-        var currentLog = {
-            timestamp: pilot.last_updated,
-            latitude: pilot.latitude,
-            longitude: pilot.longitude,
-            altitude: pilot.altitude,
-            groundspeed: pilot.groundspeed,
-            heading: pilot.heading,
-            qnh_mb: pilot.qnh_mb
-        }
-        var outputPilot = {
-            cid: pilot.cid,
-            name: pilot.name,
-            callsign: pilot.callsign,
-            logon_time: pilot.logon_time,
-            flightplan: pilot.flight_plan,
-            log: [currentLog]
-        }
-        // console.log(outputPilot)
-        resolve(outputPilot)
-    })
+  return new Promise(function (resolve, reject) {
+    var currentLog = {
+      timestamp: pilot.last_updated,
+      latitude: pilot.latitude,
+      longitude: pilot.longitude,
+      altitude: pilot.altitude,
+      groundspeed: pilot.groundspeed,
+      heading: pilot.heading,
+      qnh_mb: pilot.qnh_mb,
+    };
+    var outputPilot = {
+      cid: pilot.cid,
+      name: pilot.name,
+      callsign: pilot.callsign,
+      logon_time: pilot.logon_time,
+      flightplan: pilot.flight_plan,
+      log: [currentLog],
+    };
+    // console.log(outputPilot)
+    resolve(outputPilot);
+  });
 }
 function managePilots(data) {
-    return new Promise(function (resolve, reject) {
-        var promises = data.pilots.map(function (ele) {
-            return managePilot(ele)
-        })
-        Promise.all(promises).then((results) => {
-            resolve(results)
-        })
-    })
+  return new Promise(function (resolve, reject) {
+    var promises = data.pilots.map(function (ele) {
+      return managePilot(ele);
+    });
+    Promise.all(promises).then((results) => {
+      resolve(results);
+    });
+  });
 }
 
 function mergeIdentities(table) {
-    return new Promise(function (resolve, reject) {
-
-        var promises = table.map(function (ele) {
-            return managePilots(ele)
-        })
-        Promise.all(promises).then((results) => {
-            var final = {}
-            results.forEach((result) => {
-                result.forEach((pilot) => {
-                    if (final[pilot.cid]) {
-                        if (final[pilot.cid].logon_time != pilot.logon_time) {
-                            var [newCid, status] = returnUniqueCid(final, pilot)
-                            if (status == ID_ALREADY_ASSIGNED) {
-                                final[newCid].log.push(pilot.log[0])
-                            } else if (status == ID_NEW_FLIGHT) {
-                                pilot.initial_logon_time = pilot.logon_time
-                                final[newCid] = pilot
-                            } else if (status == ID_RESUME_FLIGHT) {
-                                // if (pilot.callsign == "THY2323") console.log(pilot.callsign, newCid, pilot.logon_time)
-                                final[newCid].logon_time = pilot.logon_time
-                                final[newCid].log.push(pilot.log[0])
-
-                            }
-                        } else {
-                            final[pilot.cid].log.push(pilot.log[0])
-                        }
-
-                    } else {
-                        pilot.initial_logon_time = pilot.logon_time
-                        final[pilot.cid] = pilot
-                    }
-                })
-            })
-            resolve(final)
-        })
-    })
+  return new Promise(function (resolve, reject) {
+    // console.log(table)
+    var promises = table.map(function (ele) {
+      return managePilots(ele);
+    });
+    Promise.all(promises).then((results) => {
+      var final = {};
+      results.forEach((result) => {
+        result.forEach((pilot) => {
+          if (final[pilot.cid]) {
+            if (final[pilot.cid].logon_time != pilot.logon_time) {
+              var [newCid, status] = returnUniqueCid(final, pilot);
+              if (status == ID_ALREADY_ASSIGNED) {
+                final[newCid].log.push(pilot.log[0]);
+              } else if (status == ID_NEW_FLIGHT) {
+                pilot.initial_logon_time = pilot.logon_time;
+                final[newCid] = pilot;
+              } else if (status == ID_RESUME_FLIGHT) {
+                // if (pilot.callsign == "THY2323") console.log(pilot.callsign, newCid, pilot.logon_time)
+                final[newCid].logon_time = pilot.logon_time;
+                final[newCid].log.push(pilot.log[0]);
+              }
+            } else {
+              final[pilot.cid].log.push(pilot.log[0]);
+            }
+          } else {
+            pilot.initial_logon_time = pilot.logon_time;
+            final[pilot.cid] = pilot;
+          }
+        });
+      });
+      resolve(final);
+    });
+  });
 }
 function assembleUsefulTable(subset) {
-    return new Promise(function (resolve, reject) {
-        var res = subset.map(function (ele) {
-            return assembleUsefulSubTable(ele)
-        })
-        Promise.all(res).then((results) =>
-            resolve(results)
-        )
-
-    })
+  return new Promise(function (resolve, reject) {
+    var res = subset.map(function (ele) {
+      return assembleUsefulSubTable(ele);
+    });
+    Promise.all(res).then((results) => resolve(results));
+  });
 }
-exports.assembleUsefulTable = assembleUsefulTable
-exports.mergeIdentities = mergeIdentities
-exports.validReadings = validReadings
+exports.assembleUsefulTable = assembleUsefulTable;
+exports.mergeIdentities = mergeIdentities;
+exports.validReadings = validReadings;
 
 parseResults = {
-    lastUpdated: new Date("01-01-1970"),
-    body: [],
-    bodyTable: {}
-}
+  lastUpdated: new Date("01-01-1970"),
+  body: [],
+  bodyTable: {},
+};
 function parse() {
-    return new Promise(function (acc, reject) {
-        if ((new Date() - parseResults.lastUpdated) < 60 * 1000) {
-            console.log("new enough")
-            acc(parseResults.body)
-        }
-        console.log("we're here")
-        validReadings(new Date("2020-01-14 19:42:00"), new Date())
-            .then((subset) => assembleUsefulTable(subset))
-            .then((table) => mergeIdentities(table))
-            .then((res) => {
-                var array = Object.values(res)
-                console.log(`Summary Statistics:
-        Flights managed: ${array.length}`
-                )
-                parseResults = {
-                    lastUpdated: new Date(),
-                    body: array,
-                    bodyObj: res
-                }
-                console.log("accepted the promise")
-                acc(parseResults)
-            })
-    })
+  return new Promise(function (acc, reject) {
+    if (new Date() - parseResults.lastUpdated < 60 * 1000) {
+      console.log("new enough");
+      acc(parseResults.body);
+    }
+    console.log("we're here");
+    validReadings(new Date("2020-01-14 19:42:00"), new Date())
+      .then((subset) => assembleUsefulTable(subset))
+      .then((table) => mergeIdentities(table))
+      .then((res) => {
+        var array = Object.values(res);
+        console.log(`Summary Statistics:
+        Flights managed: ${array.length}`);
+        parseResults = {
+          lastUpdated: new Date(),
+          body: array,
+          bodyObj: res,
+        };
+        // console.log("accepted the promise")
+        acc(parseResults);
+      });
+  });
 }
-exports.parse = parse
+exports.parse = parse;
 
 function convertFlightToGeoJson(flight) {
-    var log = convertLogToGeoJson(flight.log)
-    // console.log(flight)
-    var depAirport = ""
-    var destAirport = ""
-    if (flight.flightplan != null) {
-        depAirport = flight.flightplan.departure
-        destAirport = flight.flightplan.destination
-    }
-    log.properties = {
-        depAirport: depAirport,
-        arrAirport: destAirport,
-        cid: flight.cid,
-        callsign: flight.callsign,
-        name: flight.name
-    }
-    return log
+  var log = convertLogToGeoJson(flight.log);
+  // console.log(flight)
+  var depAirport = "";
+  var destAirport = "";
+  if (flight.flightplan != null) {
+    depAirport = flight.flightplan.departure;
+    destAirport = flight.flightplan.destination;
+  }
+  log.properties = {
+    depAirport: depAirport,
+    arrAirport: destAirport,
+    cid: flight.cid,
+    callsign: flight.callsign,
+    name: flight.name,
+  };
+  return log;
 }
-exports.convertFlightToGeoJson = convertFlightToGeoJson
+exports.convertFlightToGeoJson = convertFlightToGeoJson;
 
 function convertLogToGeoJson(log, full, colour) {
-    var coords = []
-    log.forEach((position) => {
-        coords.push([position.longitude, position.latitude])
-    })
-    if (full === true) {
-        var geo = {
-            type: "FeatureCollection",
-            features: [
-                {
-                    type: "Feature",
-                    properties: {},
-                    geometry: {
-                        type: "LineString",
-                        coordinates: coords
-                    },
-                }
-            ]
-        }
-        return geo
-    } else {
-        var geo = {
-            type: "Feature",
-            properties: {},
-            geometry: {
-                type: "LineString",
-                coordinates: coords
-            },
-        }
-        return geo
-    }
-    return
+  var coords = [];
+  log.forEach((position) => {
+    coords.push([position.longitude, position.latitude]);
+  });
+  if (full === true) {
+    var geo = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "LineString",
+            coordinates: [coords],
+          },
+        },
+      ],
+    };
+    return geo;
+  } else {
+    var geo = {
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "LineString",
+        coordinates: coords,
+      },
+    };
+    return geo;
+  }
+  return;
 }
-exports.convertLogToGeoJson = convertLogToGeoJson
+exports.convertLogToGeoJson = convertLogToGeoJson;
+
+function readSectors() {
+  return new Promise(function (resolve, reject) {
+    fs.readFile("./vatglasses/sectorsObj.json", (err, body) => {
+      if (err) reject(err);
+      var results = JSON.parse(body);
+      for (key in results) {
+        var sec = results[key];
+        if (sec.isCircle === false) {
+          results[key].geoJson = turf.polygon([sec.coordinates], {
+            base: sec.base,
+            top: sec.top,
+            name: sec.name,
+          });
+        } else {
+          results[key].geoJson = turf.point(sec.coordinates, {
+            base: sec.base,
+            top: sec.top,
+            name: sec.name,
+            radius: sec.radius,
+          });
+        }
+      }
+
+      resolve(results);
+    });
+  });
+}
+function readControllers() {
+  return new Promise(function (resolve, reject) {
+    fs.readFile("./vatglasses/controllers.json", (err, body) => {
+      if (err) reject(err);
+      var results = JSON.parse(body);
+      resolve(results);
+    });
+  });
+}
+function readInheritance() {
+  return new Promise(function (resolve, reject) {
+    fs.readFile("./vatglasses/inheritance.json", (err, body) => {
+      if (err) reject(err);
+      var results = JSON.parse(body);
+      resolve(results);
+    });
+  });
+}
+// function readSectors() {
+//     return new Promise(function (resolve, reject) {
+//         Promise.all([readSectors2, readControllers, readInheritance]).then((results) => {
+//             console.log(results)
+//             resolve(results)
+//         })
+//     })
+// }
+
+exports.readSectors = readSectors;
+exports.readControllers = readControllers;
+exports.readInheritance = readInheritance;
