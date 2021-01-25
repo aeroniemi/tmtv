@@ -1,0 +1,21 @@
+{
+    "highlight.regexes": {
+        "(expect)\\(": [
+            {
+                "overviewRulerColor": "#1EAE5A",
+                "backgroundColor": "#0F572D",
+                "color": "#F6E27F",
+                "fontWeight": "bold"
+            },
+        ],
+        "([A-Z\\_]+?\\.[A-Z\\_]+?\\.[A-Z\\_]+)": {
+            "regexFlags": "g",
+            "decorations": {
+                "color": "#4FC1FF",
+            },
+        }
+    },
+    "highlight.decorations": {
+        "rangeBehavior": 3
+    }
+}
