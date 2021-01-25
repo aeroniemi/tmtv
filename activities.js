@@ -4,6 +4,7 @@ const chalk = require("chalk");
 var randomColor = require("randomcolor");
 const apiUrl = "https://data.vatsim.net/v3/vatsim-data.json";
 const turf = require("@turf/turf");
+const CONSTS = require("./consts.js");
 // -----------------------------------------------------------------------------
 // Download related
 // -----------------------------------------------------------------------------
@@ -84,9 +85,7 @@ exports.getNewest = getNewest;
 // -----------------------------------------------------------------------------
 // Parse-related
 // -----------------------------------------------------------------------------
-const ID_RESUME_FLIGHT = 2;
-const ID_NEW_FLIGHT = 1;
-const ID_ALREADY_ASSIGNED = 0;
+
 const verbose = false;
 function report(text) {
   if (verbose) console.log(text);
@@ -97,7 +96,7 @@ function returnUniqueCid(table, flight) {
     if (newCid in table) {
       var old = table[newCid];
       if (old.logon_time == flight.logon_time) {
-        return [newCid, ID_ALREADY_ASSIGNED];
+        return [newCid, CONSTS.ID.ALREADY_ASSIGNED];
       } else {
         var condition =
           ((flight.flightplan &&
@@ -114,7 +113,7 @@ function returnUniqueCid(table, flight) {
           report(
             `Pilot is mid flight - resuming their last flight (last id: ${newCid})`
           );
-          return [newCid, ID_RESUME_FLIGHT];
+          return [newCid, CONSTS.ID.RESUME_FLIGHT];
         } else {
           if (newCid == flight.cid) {
             newCid = flight.cid * 10;
@@ -128,7 +127,7 @@ function returnUniqueCid(table, flight) {
       report(
         `Assigned new id to ${flight.cid}: ${newCid}. Flight started ${timeSinceStart} seconds ago`
       );
-      return [newCid, ID_NEW_FLIGHT];
+      return [newCid, CONSTS.ID.NEW_FLIGHT];
     }
   }
 }
@@ -213,12 +212,12 @@ function mergeIdentities(table) {
           if (final[pilot.cid]) {
             if (final[pilot.cid].logon_time != pilot.logon_time) {
               var [newCid, status] = returnUniqueCid(final, pilot);
-              if (status == ID_ALREADY_ASSIGNED) {
+              if (status == CONSTS.ID.ALREADY_ASSIGNED) {
                 final[newCid].log.push(pilot.log[0]);
-              } else if (status == ID_NEW_FLIGHT) {
+              } else if (status == CONSTS.ID.NEW_FLIGHT) {
                 pilot.initial_logon_time = pilot.logon_time;
                 final[newCid] = pilot;
-              } else if (status == ID_RESUME_FLIGHT) {
+              } else if (status == CONSTS.ID.RESUME_FLIGHT) {
                 // if (pilot.callsign == "THY2323") console.log(pilot.callsign, newCid, pilot.logon_time)
                 final[newCid].logon_time = pilot.logon_time;
                 final[newCid].log.push(pilot.log[0]);

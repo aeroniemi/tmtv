@@ -10,6 +10,7 @@ var helpers = {};
 helpers.json = function (context) {
   return JSON.stringify(context);
 };
+const CONSTS = require("./consts.js");
 var sectorOwner = {};
 var ownedSectors = {};
 var pilotsArray = [];
