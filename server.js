@@ -1,41 +1,50 @@
-const express = require("express");
-const exphbs = require("express-handlebars");
-const geo = require("geolib");
+// -----------------------------------------------------------------------------
+// Modules
+// -----------------------------------------------------------------------------
+const activities = require("./activities.js");
 const chalk = require("chalk");
-const app = express();
-const port = 8080;
-var activities = require("./activities.js");
-var config = require("./config.js");
-var helpers = {};
-helpers.json = function (context) {
-  return JSON.stringify(context);
-};
+const config = require("./config.js");
+const dayjs = require("dayjs");
+const expect = require("chai").expect;
+const exphbs = require("express-handlebars");
+const express = require("express");
+const sma = require("sma");
 const CONSTS = require("./consts.js");
+const isBetween = require("dayjs/plugin/isBetween");
+dayjs.extend(isBetween);
+// -----------------------------------------------------------------------------
+// Variables
+// -----------------------------------------------------------------------------
+const app = express();
 var sectorOwner = {};
 var ownedSectors = {};
 var pilotsArray = [];
 var pilotsObj = {};
-var timer = new Date();
 var livePilotsArray = [];
 var livePilotsObj = {};
-async function run() {
+var loadedFiles = [];
+// -----------------------------------------------------------------------------
+// Run function
+// Runs the server stuff
+// -----------------------------------------------------------------------------
+async function run(start, end) {
   var sectors = await activities.readSectors();
   var controllers = await activities.readControllers();
   var inheritance = await activities.readInheritance();
-  // console.log(inheritance)
-  var parseResults = await activities.parse();
+  var files = await activities.getResultsInAgeRange(start, end);
+  var parseResults = await activities.initialFileLoad(files[1]);
   pilotsArray = parseResults.body;
   pilotsObj = parseResults.bodyObj;
+  pilotsArray = await activities.workOutAllFlightPhases(pilotsArray);
   app.use("/static", express.static("static"));
   app.use("/api/sector", express.static("vatglasses"));
-  app.engine("handlebars", exphbs({ helpers, extname: ".hbs" }));
+  app.engine("handlebars", exphbs({ extname: ".hbs" }));
   app.set("view engine", "handlebars");
   app.get("/", function (req, res) {
     res.send("Hello World!");
   });
-
-  app.listen(port, () => {
-    console.log(`Open for buisness at http://localhost:${port}`);
+  app.listen(config.port, () => {
+    console.log(`Open for buisness at http://localhost:${config.port}`);
   });
   function createError(status, message) {
     var err = new Error(message);
@@ -49,9 +58,14 @@ async function run() {
     res.render("aircraftById", { apiUrl: apiUrl });
   });
   app.get("/map/all", function (req, res, next) {
-    console.log(timer);
     res.render("generic", {
       apiUrl: "/aircraft/",
+      mapboxToken: config.mapboxToken,
+    });
+  });
+  app.get("/map/airport/:icao", function (req, res, next) {
+    res.render("generic", {
+      apiUrl: `airport/${req.params.icao}`,
       mapboxToken: config.mapboxToken,
     });
   });
@@ -67,6 +81,7 @@ async function run() {
       mapboxToken: config.mapboxToken,
     });
   });
+
   app.get("/map/sector/", function (req, res, next) {
     res.render("generic", {
       apiUrl: `/sector/sectors.geojson`,
@@ -134,16 +149,94 @@ async function run() {
       features: [],
     };
     pilotsArray.forEach((flight) => {
-      if (flight.departure == req.params.icao) {
-        var plane = activities.convertLogToGeoJson(flight.log);
-        // plane.properties.departure
-        planes.features.push(activities.convertLogToGeoJson(flight.log));
-      } else if (flight.destination == req.params.icao) {
-        planes.features.push(activities.convertLogToGeoJson(flight.log));
+      if (flight.flightplan !== null && flight.log.length > 0) {
+        if (flight.flightplan.departure == req.params.icao) {
+          var plane = activities.convertLogToGeoJson(flight.log);
+          plane.properties = flight;
+          delete plane.properties.log;
+          planes.features.push(plane);
+        } else if (flight.flightplan.destination == req.params.icao) {
+          planes.features.push(plane);
+        }
       }
     });
     res.send(planes);
   });
+
+  // ---------------------------------------------------------------------------
+  // Performance
+  // ---------------------------------------------------------------------------
+  app.get("/performance/:icao", function (req, res, next) {
+    res.render("opsRate", req);
+  });
+  app.get("/api/airport/:icao/performance.json", function (req, res, next) {
+    var ta = calculateAirportPerformance(req.params.icao);
+    res.send(JSON.stringify(ta));
+  });
+  app.get(
+    "/api/airport/:icao/performanceChart.json",
+    function (req, res, next) {
+      var ta = calculateAirportPerformance(req.params.icao);
+      var newTable = [
+        {
+          x: [],
+          raw: [],
+          y: [],
+          stackgroup: "one",
+          name: "Takeoffs",
+        },
+        {
+          x: [],
+          raw: [],
+          y: [],
+          stackgroup: "one",
+          name: "Landings",
+        },
+        {
+          x: [],
+          raw: [],
+          y: [],
+          stackgroup: "two",
+          name: "Taxi",
+        },
+        {
+          x: [],
+          raw: [],
+          y: [],
+          stackgroup: "two",
+          name: "Top of Descent",
+        },
+      ];
+      ta.forEach((slot) => {
+        newTable[0].x.push(dayjs(slot.time).toISOString());
+        newTable[1].x.push(dayjs(slot.time).toISOString());
+        newTable[2].x.push(dayjs(slot.time).toISOString());
+        newTable[3].x.push(dayjs(slot.time).toISOString());
+        newTable[0].raw.push(slot.events[1] * 60);
+        newTable[1].raw.push(slot.events[5] * 60);
+        newTable[2].raw.push(slot.events[0] * 60);
+        newTable[3].raw.push(slot.events[4] * 60);
+      });
+      newTable[0].y = sma(newTable[0].raw, 20);
+      newTable[1].y = sma(newTable[1].raw, 20);
+      newTable[2].y = sma(newTable[2].raw, 20);
+      newTable[3].y = sma(newTable[3].raw, 20);
+      delete newTable[0].raw;
+      delete newTable[1].raw;
+      delete newTable[2].raw;
+      delete newTable[3].raw;
+      res.send(JSON.stringify(newTable));
+    }
+  );
+  app.get("/api/airport/:icao/performance.csv", function (req, res, next) {
+    var ta = calculateAirportPerformance(req.params.icao);
+    var csv = activities.stringifyCsv(ta);
+    res.header("Content-Type", "text/csv");
+    res.send(csv);
+  });
+  // ---------------------------------------------------------------------------
+  //
+  // ---------------------------------------------------------------------------
   app.get("/api/sector/:id", function (req, res, next) {
     var sector = sectors[req.params.id];
     if (typeof sector === undefined) {
@@ -270,43 +363,181 @@ async function run() {
     // console.log(ownedSectors[125])
   }
 }
-run();
-
-function watch(maxAge, verbose) {
-  setInterval(
-    () =>
-      activities.getNewest().then(
-        function (newest) {
-          let lastUpdated = new Date(newest * 1000);
-          let age = Date.now() - lastUpdated;
-          if (age > maxAge) {
-            if (verbose)
-              console.info(
-                `Local datafeed was last updated ${Math.round(
-                  age / (1000 * 60)
-                )} minutes ago, downloading a new version`
-              );
-            activities
-              .downloadLatestData()
-              .catch((e) => {
-                console.log(chalk.bgRed(e));
-                return;
-              })
-              .then((data) => {});
-          } else {
-            if (verbose)
-              console.info(
-                `Local datafeed was last updated ${Math.round(
-                  age / 1000
-                )} seconds ago - no need for a new one`
-              );
+// -----------------------------------------------------------------------------
+// Calculates airport performance (landing/takeoff rate)
+// -----------------------------------------------------------------------------
+function calculateAirportPerformance(icao) {
+  var rows = [];
+  pilotsArray.forEach((flight) => {
+    if (flight.flightplan !== null) {
+      if (flight.diverted !== undefined) {
+        flight.flightplan.arrival = flight.diverted;
+      }
+      if (
+        flight.flightplan.departure == icao ||
+        flight.flightplan.arrival == icao
+      ) {
+        var flightEvents = [];
+        flight.events.forEach((event) => {
+          if (event.type === CONSTS.EVENT.TAXI) {
+            if (flight.flightplan.departure == icao) {
+              flightEvents.push({
+                time: event.time,
+                type: event.type,
+                airport: flight.flightplan.departure,
+              });
+            }
+          } else if (event.type === CONSTS.EVENT.TAKEOFF) {
+            if (flight.flightplan.departure == icao) {
+              flightEvents.push({
+                time: event.time,
+                type: event.type,
+                airport: flight.flightplan.departure,
+              });
+            }
+          } else if (event.type === CONSTS.EVENT.TOPOFDESCENT) {
+            if (flight.flightplan.arrival == icao) {
+              flightEvents.push({
+                time: event.time,
+                type: event.type,
+                airport: flight.flightplan.arrival,
+              });
+            }
+          } else if (event.type === CONSTS.EVENT.LANDING) {
+            if (flight.flightplan.arrival == icao) {
+              flightEvents.push({
+                time: event.time,
+                type: event.type,
+                airport: flight.flightplan.arrival,
+              });
+            }
           }
+        });
+        rows.push(...flightEvents);
+      }
+    }
+  });
+  rows = rows.sort((a, b) => new Date(a.time) - new Date(b.time));
+  // console.log(rows[0]);
+  var ta = [
+    {
+      time: dayjs(rows[0].time).startOf("minute"),
+      events: [],
+    },
+  ];
+  var timeIndex = 0;
+  var rowIndex = 0;
+  while (rowIndex < rows.length) {
+    var row = rows[rowIndex];
+    if (dayjs(row.time).isBefore(dayjs(ta[timeIndex].time).add(1, "minute"))) {
+      ta[timeIndex].events[row.type] += 1;
+      rowIndex++;
+    } else {
+      ta.push({
+        time: dayjs(ta[timeIndex].time).add(1, "minute"),
+        events: {
+          5: 0,
+          1: 0,
+          0: 0,
+          3: 0,
         },
-        function (error) {
-          console.log(error);
-        }
-      ),
-    maxAge
-  );
+      });
+      timeIndex += 1;
+    }
+  }
+
+  return ta;
 }
-watch(60000, false);
+// -----------------------------------------------------------------------------
+// Watch the datafeed
+// -----------------------------------------------------------------------------
+function watchDatafeed(hours) {
+  maxAge = maxAge || config.maximumDatafeedAge;
+  setInterval(async function () {
+    var [newest, all] = await activities.getResultsInAgeRange(
+      dayjs().subtract(hours, "hours"),
+      dayjs()
+    );
+    let age = dayjs().diff(dayjs.unix(newest), "seconds");
+    console.log(age);
+    if (age > maxAge) {
+      if (loadedFiles.length === 0) {
+        var parseResults = await activities.initialFileLoad(all);
+        pilotsArray = parseResults.body;
+        pilotsObj = parseResults.bodyObj;
+      }
+      await activities.downloadLatestData().catch((e) => {
+        console.log(chalk.bgRed(e));
+        return;
+      });
+    }
+  }, maxAge);
+}
+// -----------------------------------------------------------------------------
+// Startup for the live server
+// -----------------------------------------------------------------------------
+async function startLive(hours) {
+  expect(hours).to.be.a("number");
+  watchDatafeed(hours);
+  runServerStartup();
+  return;
+}
+// -----------------------------------------------------------------------------
+// Manages the commands from cli
+// -----------------------------------------------------------------------------
+var argv = require("yargs/yargs")(process.argv.slice(2))
+  .command(
+    "serve",
+    "Run the web server",
+    (yargs) => {
+      yargs
+        .option("start", {
+          describe: "Start time/date",
+          default: "2021-01-20 16:00:00",
+          type: "string",
+        })
+        .option("end", {
+          describe: "Start time/date",
+          default: "2021-01-20 23:30:00",
+          type: "string",
+        });
+    },
+    (argv) => {
+      if (dayjs(argv.start).isValid() !== true) {
+        throw new Error(
+          "Start time is not a valid date. Make sure you use a valid date format."
+        );
+      }
+      if (dayjs(argv.end).isValid() !== true) {
+        throw new Error(
+          "End time is not a valid date. Make sure you use a valid date format."
+        );
+      }
+      if (
+        dayjs(argv.start).isBefore(dayjs(argv.end)) === false ||
+        dayjs(argv.start).isBefore(dayjs()) === false
+      ) {
+        throw new Error("Start time is not before end time");
+      }
+      run(argv.start, argv.end);
+    }
+  )
+  .command(
+    "live",
+    "Run the web server in live",
+    (yargs) => {
+      yargs.option("hours", {
+        describe: "Max data age in hours",
+        default: 4,
+        type: "number",
+      });
+    },
+    (argv) => {
+      if (argv.hours > 48 && argv.hours < 1) {
+        throw new Error(
+          "Defined hours is bad - needs to be a int between 1 and 48"
+        );
+      }
+      startLive(argv.hours);
+    }
+  ).argv;

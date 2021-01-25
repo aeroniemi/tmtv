@@ -5,18 +5,20 @@
   "main": "index.js",
   "scripts": {
     "watch": "node ./capture.js watch",
-    "server": "node ./server.js"
+    "server": "node ./server.js serve"
   },
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@turf/turf": "^6.3.0",
+    "chai": "^4.2.0",
     "chalk": "^4.1.0",
-    "distinct-colors": "^3.0.0",
+    "dayjs": "^1.10.3",
     "express": "^4.17.1",
     "express-handlebars": "^5.2.0",
     "open": "^7.3.1",
     "randomcolor": "^0.6.2",
+    "sma": "^0.1.1",
     "yargs": "^16.2.0"
   },
   "devDependencies": {}

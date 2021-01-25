@@ -1,10 +1,14 @@
 const https = require("https");
 const fs = require("fs");
 const chalk = require("chalk");
-var randomColor = require("randomcolor");
+const expect = require("chai").expect;
+const randomColor = require("randomcolor");
 const apiUrl = "https://data.vatsim.net/v3/vatsim-data.json";
 const turf = require("@turf/turf");
+const dayjs = require("dayjs");
 const CONSTS = require("./consts.js");
+// const momentDate = require("moment");
+const { group } = require("console");
 // -----------------------------------------------------------------------------
 // Download related
 // -----------------------------------------------------------------------------
@@ -24,9 +28,9 @@ function downloadLatestData() {
             return;
           }
           try {
-            var date = Math.trunc(
-              new Date(data.general.update_timestamp).getTime() / 1000
-            );
+            var date = dayjs(data.general.update_timestamp).unix();
+            // var date = Math.trunc(
+            //   new Date(data.general.update_timestamp).getTime() / 1000
           } catch (e) {
             reject(e);
             return;
@@ -61,27 +65,54 @@ function downloadLatestData() {
       });
   });
 }
-function getNewest() {
+function getResultsInAgeRange(start, end) {
   return new Promise(function (resolve, reject) {
-    var newest = 0;
-    fs.readdir("./datafeed/", (err, files) => {
-      // if (err) reject(err);
-      if (files === undefined || files.length == 0) {
-        resolve(1);
+    if (start === undefined) {
+      var newest = 0;
+      fs.readdir("./datafeed/", (err, files) => {
+        // if (err) reject(err);
+        if (files === undefined || files.length == 0) {
+          resolve(1);
+          return;
+        }
+        newest = Math.max(
+          ...files.map(function (file) {
+            return parseInt(file.substring(0, file.length - 5));
+          })
+        );
+        resolve(newest);
         return;
-      }
-      newest = Math.max(
-        ...files.map(function (file) {
-          return parseInt(file.substring(0, file.length - 5));
-        })
-      );
-      resolve(newest);
-      return;
-    });
+      });
+    } else {
+      fs.readdir("./datafeed/", (err, files) => {
+        // if (err) reject(err);
+        if (files === undefined || files.length == 0) {
+          reject("No Files");
+          return;
+        }
+
+        inRange = files
+          .map(function (file) {
+            var time = parseInt(file.substring(0, file.length - 5));
+            if (dayjs.unix(time).isBetween(dayjs(start), dayjs(end), null)) {
+              return time;
+            } else {
+              return null;
+            }
+          })
+          .filter(function (el) {
+            return el != null;
+          });
+        newest = Math.max(...inRange);
+        resolve([newest, inRange]);
+        return;
+      });
+    }
   });
 }
 exports.downloadLatestData = downloadLatestData;
-exports.getNewest = getNewest;
+exports.getNewest = getResultsInAgeRange;
+exports.getResultsInAgeRange = getResultsInAgeRange;
 // -----------------------------------------------------------------------------
 // Parse-related
 // -----------------------------------------------------------------------------
@@ -134,8 +165,9 @@ function returnUniqueCid(table, flight) {
 function validReadings(oldest, newest) {
   return new Promise(function (resolve, reject) {
     var output = [];
-    var oldestUnix = Math.trunc(oldest.getTime() / 1000);
-    var newestUnix = Math.trunc(newest.getTime() / 1000);
+    var oldestUnix = Math.trunc(dayjs(oldest).unix());
+    var newestUnix = Math.trunc(dayjs(newest).unix());
+    // console.log(oldestUnix, newestUnix);
     fs.readdir("./datafeed/", (err, files) => {
       if (err) throw err;
       if (files === undefined || files.length == 0) {
@@ -149,6 +181,7 @@ function validReadings(oldest, newest) {
           output.push(image);
         }
       });
+
       resolve(output);
     });
   });
@@ -210,8 +243,11 @@ function mergeIdentities(table) {
       results.forEach((result) => {
         result.forEach((pilot) => {
           if (final[pilot.cid]) {
+            var newCid = pilot.cid;
             if (final[pilot.cid].logon_time != pilot.logon_time) {
-              var [newCid, status] = returnUniqueCid(final, pilot);
+              var res = returnUniqueCid(final, pilot);
+              newCid = res[0];
+              var status = res[1];
               if (status == CONSTS.ID.ALREADY_ASSIGNED) {
                 final[newCid].log.push(pilot.log[0]);
               } else if (status == CONSTS.ID.NEW_FLIGHT) {
@@ -222,8 +258,41 @@ function mergeIdentities(table) {
                 final[newCid].logon_time = pilot.logon_time;
                 final[newCid].log.push(pilot.log[0]);
               }
+              if (
+                final[newCid].flightplan === null &&
+                pilot.flightplan !== null
+              ) {
+                final[newCid].flightplan = pilot.flightplan;
+                // console.log(`Assigning new flightplan to ${pilot.callsign}`);
+              }
             } else {
               final[pilot.cid].log.push(pilot.log[0]);
+              if (
+                final[pilot.cid].flightplan === null &&
+                pilot.flightplan !== null
+              ) {
+                final[pilot.cid].flightplan = pilot.flightplan;
+                // console.log(`Assigning new flightplan to ${pilot.callsign}`);
+              }
+            }
+            if (
+              final[newCid].flightplan !== null &&
+              pilot.flightplan !== null
+            ) {
+              if (
+                final[newCid].flightplan.departure ==
+                  pilot.flightplan.departure &&
+                final[newCid].flightplan.arrival != pilot.flightplan.arrival
+              ) {
+                if (final[newCid].diverted === undefined) {
+                  // if (final[newCid].flightplan.arrival == "EGKK") {
+                  //   console.log(
+                  //     `${pilot.callsign} Might have diverted from ${final[newCid].flightplan.arrival} to ${pilot.flightplan.arrival} `
+                  //   );
+                  // }
+                  final[newCid].diverted = pilot.flightplan.arrival;
+                }
+              }
             }
           } else {
             pilot.initial_logon_time = pilot.logon_time;
@@ -248,26 +317,20 @@ exports.mergeIdentities = mergeIdentities;
 exports.validReadings = validReadings;
 
 parseResults = {
-  lastUpdated: new Date("01-01-1970"),
+  lastUpdated: dayjs("01-01-1970"),
   body: [],
   bodyTable: {},
 };
-function parse() {
+function initialFileLoad(files) {
   return new Promise(function (acc, reject) {
-    if (new Date() - parseResults.lastUpdated < 60 * 1000) {
-      console.log("new enough");
-      acc(parseResults.body);
-    }
-    console.log("we're here");
-    validReadings(new Date("2020-01-14 19:42:00"), new Date())
-      .then((subset) => assembleUsefulTable(subset))
+    assembleUsefulTable(files)
       .then((table) => mergeIdentities(table))
       .then((res) => {
         var array = Object.values(res);
         console.log(`Summary Statistics:
         Flights managed: ${array.length}`);
         parseResults = {
-          lastUpdated: new Date(),
+          lastUpdated: dayjs(),
           body: array,
           bodyObj: res,
         };
@@ -276,7 +339,7 @@ function parse() {
       });
   });
 }
-exports.parse = parse;
+exports.initialFileLoad = initialFileLoad;
 
 function convertFlightToGeoJson(flight) {
   var log = convertLogToGeoJson(flight.log);
@@ -293,6 +356,8 @@ function convertFlightToGeoJson(flight) {
     cid: flight.cid,
     callsign: flight.callsign,
     name: flight.name,
+    phases: flight.phases,
+    events: flight.events,
   };
   return log;
 }
@@ -390,3 +455,186 @@ function readInheritance() {
 exports.readSectors = readSectors;
 exports.readControllers = readControllers;
 exports.readInheritance = readInheritance;
+
+function workOutFlightPhases(flight) {
+  return new Promise(function (resolve, reject) {
+    if (flight.flightplan === null) {
+      (flight.phases = null), (flight.events = null);
+      resolve(flight);
+    }
+    var states = [];
+    var events = [];
+    var currentState = null;
+
+    function changeState(state, time, data) {
+      //   console.log(
+      //     `changing ${flight.callsign} (${flight.cid}) from ${currentState} to ${state}`
+      //   );
+      states[states.length - 1].end = time;
+      states.push({
+        phase: state,
+        start: time,
+        end: null,
+        ...data,
+      });
+      currentState = state;
+    }
+    function defineEvent(event, time) {
+      events.push({
+        type: event,
+        time: time,
+      });
+    }
+    function identPhase(moment) {
+      if (currentState === null) {
+        // init
+        if (moment.groundspeed > 50) {
+          currentState = CONSTS.STATE.CRUISE;
+          states.push({
+            phase: CONSTS.STATE.CRUISE,
+            start: moment.timestamp,
+            end: null,
+          });
+        } else {
+          currentState = CONSTS.STATE.PREFLIGHT;
+          states.push({
+            phase: CONSTS.STATE.PREFLIGHT,
+            start: moment.timestamp,
+            end: null,
+          });
+        }
+      } else {
+        // already inited
+        // -------------------------------------------------------------------
+        // Preflight
+        // -------------------------------------------------------------------
+        if (currentState == CONSTS.STATE.PREFLIGHT) {
+          if (moment.groundspeed < 0) {
+            changeState(CONSTS.STATE.PUSH, moment.timestamp);
+            return;
+          }
+          if (moment.groundspeed > 5) {
+            defineEvent(CONSTS.EVENT.TAXI, moment.timestamp);
+            changeState(CONSTS.STATE.TAXI, moment.timestamp);
+            return;
+          }
+        }
+        // -------------------------------------------------------------------
+        // Push
+        // -------------------------------------------------------------------
+        if (currentState == CONSTS.STATE.PUSH) {
+          if (moment.groundspeed > 5) {
+            defineEvent(CONSTS.EVENT.TAXI, moment.timestamp);
+            changeState(CONSTS.STATE.TAXI, moment.timestamp);
+            return;
+          }
+        }
+        // -------------------------------------------------------------------
+        // Taxi
+        // -------------------------------------------------------------------
+        if (currentState == CONSTS.STATE.TAXI) {
+          if (moment.groundspeed > 50) {
+            changeState(CONSTS.STATE.CLIMB, moment.timestamp);
+            defineEvent(CONSTS.EVENT.TAKEOFF, moment.timestamp);
+            return;
+          }
+        }
+        // -------------------------------------------------------------------
+        // Climb
+        // -------------------------------------------------------------------
+        if (currentState == CONSTS.STATE.CLIMB) {
+          if (moment.groundspeed < 50) {
+            changeState(CONSTS.STATE.TAXI, moment.timestamp);
+            defineEvent(CONSTS.EVENT.ABORTTAKEOFF, moment.timestamp);
+            return;
+          }
+          if (Math.abs(moment.altitude - flight.flightplan.altitude) < 2000) {
+            changeState(CONSTS.STATE.CRUISE, moment.timestamp);
+            defineEvent(CONSTS.EVENT.TOPOFCLIMB, moment.timestamp);
+            return;
+          }
+        }
+        // -------------------------------------------------------------------
+        // cruise
+        // -------------------------------------------------------------------
+        if (currentState == CONSTS.STATE.CRUISE) {
+          if (flight.flightplan.altitude - moment.altitude > 4000) {
+            changeState(CONSTS.STATE.DESCENT, moment.timestamp);
+            defineEvent(CONSTS.EVENT.TOPOFDESCENT, moment.timestamp);
+            return;
+          }
+        }
+        // -------------------------------------------------------------------
+        // descent
+        // -------------------------------------------------------------------
+        if (currentState == CONSTS.STATE.DESCENT) {
+          if (moment.groundspeed < 50) {
+            changeState(CONSTS.STATE.ARRIVAL, moment.timestamp);
+            defineEvent(CONSTS.EVENT.LANDING, moment.timestamp);
+            return;
+          }
+        }
+        // -------------------------------------------------------------------
+        // descent
+        // -------------------------------------------------------------------
+        if (currentState == CONSTS.STATE.ARRIVAL) {
+          if (moment.groundspeed > 50) {
+            changeState(CONSTS.STATE.CLIMB, moment.timestamp);
+            defineEvent(CONSTS.EVENT.TAKEOFF, moment.timestamp);
+            return;
+          }
+        }
+      }
+    }
+    flight.log.forEach(identPhase);
+    flight.phases = states;
+    flight.events = events;
+    // if (flight.callsign == "LOT2021") {
+    //   var sub = flight;
+    //   delete flight.log;
+    //   console.log(flight);
+    // }
+    resolve(flight);
+  });
+}
+
+function workOutAllFlightPhases(flights) {
+  return new Promise(function (resolve, reject) {
+    var promises = flights.map((flight) => {
+      return workOutFlightPhases(flight);
+    });
+    Promise.all(promises).then((phases) => {
+      resolve(phases);
+    });
+  });
+}
+exports.workOutAllFlightPhases = workOutAllFlightPhases;
+
+exports.stringifyCsv = function stringifyCsv(data) {
+  var output = ``;
+  for (key in data[0]) {
+    output += `${key},`;
+  }
+  output = output.slice(0, -1);
+  output += "\r\n";
+  data.forEach((row) => {
+    for (col in row) {
+      var cell = row[col];
+
+      if (cell instanceof dayjs) {
+        cell = dayjs(cell).format("DD/MM/YYYY  HH:mm:ss");
+      }
+      if (cell instanceof Object) {
+        var st = ``;
+        for (key in cell) {
+          st += `${cell[key]},`;
+        }
+        cell = st;
+      }
+      output += `${cell},`;
+    }
+    output = output.slice(0, -1);
+    output += "\r\n";
+  });
+  return output;
+};

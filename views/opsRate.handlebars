@@ -1,0 +1,50 @@
+<html>
+
+<head>
+	<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+	<script src='http://localhost:8080/static/js/core.js'></script>
+</head>
+
+<body style='background-color: #001021;'>
+	<div id='plot'></div>
+	<style>
+		#plot {
+			width: 90vw;
+			height: 90vh;
+			margin: auto;
+			background-color: #001E3D;
+			margin-top: 5vh;
+		}
+
+	</style>
+	<script>
+		function requestJson(file, callback) {
+			let xhr = new XMLHttpRequest();
+			xhr.open("GET", file);
+			xhr.setRequestHeader("Content-Type", "application/json");
+			xhr.responseType = "json";
+			xhr.onload = function () {
+				if (xhr.status !== 200) return;
+				callback(xhr.response);
+			};
+			xhr.send();
+		}
+
+		function createChart(data) {
+			console.log("hi")
+			chart = document.getElementById('plot');
+			Plotly.newPlot(chart, data, {
+				showlegend: true,
+				legend: {
+					"orientation": "h"
+				}
+			}, {
+				responsive: true
+			});
+		}
+		requestJson("/api/airport/{{params.icao}}/performanceChart.json", createChart)
+
+	</script>
+</body>
+
+</html>

@@ -18,6 +18,7 @@
 			href='https://api.mapbox.com/mapbox.js/v3.3.1/mapbox.css'
 			rel='stylesheet'
 		/>
+		<script src='http://localhost:8080/static/js/core.js'></script>
 		{{! <script type="text/javascript" src="http://maps.stamen.com/js/tile.stamen.js?v1.3.0"></script> }}
 	</head>
 
@@ -64,14 +65,14 @@
           lgLabels.clearLayers();
           var newLayer = new L.geoJSON(res, { onEachFeature: function (feature, layer) {
           if (layer instanceof L.Polygon) {
-            new L.marker(feature.properties.center.reverse(), {
-              icon: L.divIcon({
-                className: 'label',
-                html: res.facilities[feature.properties.owner].name,
-                iconAnchor: [15,10],
-                iconSize: [30,20]
-                             })
-            }).addTo(lgLabels)
+         //   new L.marker(feature.properties.center.reverse(), {
+        //      icon: L.divIcon({
+        //        className: 'label',
+        //        html: res.facilities[feature.properties.owner].name,
+        //        iconAnchor: [15,10],
+        //        iconSize: [30,20]
+        //                     })
+        //    }).addTo(lgLabels)
             //new L.marker(feature.properties.center).addTo(map)
           }
             // does this feature have a property named popupContent?
