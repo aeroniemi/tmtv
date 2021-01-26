@@ -9,6 +9,7 @@ const dayjs = require("dayjs");
 const CONSTS = require("./consts.js");
 // const momentDate = require("moment");
 const { group } = require("console");
+var pilotData = {};
 // -----------------------------------------------------------------------------
 // Download related
 // -----------------------------------------------------------------------------
@@ -37,12 +38,12 @@ function downloadLatestData() {
           }
 
           var fileName = date + ".json";
-          fs.mkdir("./temp/", { recursive: true }, (err) => {
+          fs.mkdir("./datafeed/", { recursive: true }, (err) => {
             if (err) throw err;
           });
           try {
             fs.writeFile(
-              "./temp/" + fileName,
+              "./datafeed/" + fileName,
               JSON.stringify(data),
               "utf8",
               function (err) {
@@ -103,6 +104,11 @@ function getResultsInAgeRange(start, end) {
           .filter(function (el) {
             return el != null;
           });
+        if (inRange.length === 0) {
+          resolve([null, inRange]);
+          return;
+        }
+        console.log(inRange);
         newest = Math.max(...inRange);
         resolve([newest, inRange]);
         return;
@@ -323,9 +329,9 @@ parseResults = {
 };
 function initialFileLoad(files) {
   return new Promise(function (acc, reject) {
-    assembleUsefulTable(files)
-      .then((table) => mergeIdentities(table))
-      .then((res) => {
+    assembleUsefulTable(files).then((table) => {
+      pilotData = table;
+      mergeIdentities(table).then((res) => {
         var array = Object.values(res);
         console.log(`Summary Statistics:
         Flights managed: ${array.length}`);
@@ -337,10 +343,24 @@ function initialFileLoad(files) {
         // console.log("accepted the promise")
         acc(parseResults);
       });
+    });
   });
 }
 exports.initialFileLoad = initialFileLoad;
-
+async function liveMerge(data, hours) {
+  var oldest = dayjs().subtract(hours, "hours").subtract(20, "minutes");
+  // console.log(pilotData);
+  pilotData.forEach((time, key) => {
+    if (dayjs(time.general.update_timestamp).isBefore(oldest)) {
+      console.log(`${key} is too old - deleting`);
+      delete pilotData[key];
+    }
+  });
+  pilotData.push(data);
+  var plt = await mergeIdentities(pilotData);
+  return plt;
+}
+exports.liveMerge = liveMerge;
 function convertFlightToGeoJson(flight) {
   var log = convertLogToGeoJson(flight.log);
   // console.log(flight)
@@ -465,28 +485,38 @@ function workOutFlightPhases(flight) {
     var states = [];
     var events = [];
     var currentState = null;
-
+    var lastTime = null;
+    var lastTimeBefore = null;
     function changeState(state, time, data) {
-      //   console.log(
-      //     `changing ${flight.callsign} (${flight.cid}) from ${currentState} to ${state}`
-      //   );
+      var middle = dayjs(time).subtract(
+        dayjs(time).diff(dayjs(lastTime)) / 2,
+        "ms"
+      );
       states[states.length - 1].end = time;
       states.push({
         phase: state,
-        start: time,
+        start: middle,
         end: null,
         ...data,
       });
       currentState = state;
     }
     function defineEvent(event, time) {
+      var middle = dayjs(time).subtract(
+        dayjs(time).diff(dayjs(lastTime)) / 2,
+        "ms"
+      );
       events.push({
         type: event,
-        time: time,
+        time: middle,
       });
     }
     function identPhase(moment) {
+      lastTime = lastTimeBefore;
+      lastTimeBefore = moment.timestamp;
       if (currentState === null) {
+        lastTime = moment.timestamp;
+        lastTimeBefore = moment.timestamp;
         // init
         if (moment.groundspeed > 50) {
           currentState = CONSTS.STATE.CRUISE;
@@ -609,6 +639,8 @@ function workOutAllFlightPhases(flights) {
   });
 }
 exports.workOutAllFlightPhases = workOutAllFlightPhases;
+
+exports.addToFlights = async function (pilots) {};
 
 exports.stringifyCsv = function stringifyCsv(data) {
   var output = ``;

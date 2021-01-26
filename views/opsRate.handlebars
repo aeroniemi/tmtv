@@ -1,24 +1,22 @@
 <html>
+  <head>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="http://localhost:8080/static/js/core.js"></script>
+  </head>
 
-<head>
-	<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
-	<script src='http://localhost:8080/static/js/core.js'></script>
-</head>
-
-<body style='background-color: #001021;'>
-	<div id='plot'></div>
-	<style>
-		#plot {
+  <body style="background-color: #001021;">
+    <div id="plot"></div>
+    <style>
+      #plot {
 			width: 90vw;
 			height: 90vh;
 			margin: auto;
 			background-color: #001E3D;
 			margin-top: 5vh;
 		}
-
-	</style>
-	<script>
-		function requestJson(file, callback) {
+    </style>
+    <script>
+      function requestJson(file, callback) {
 			let xhr = new XMLHttpRequest();
 			xhr.open("GET", file);
 			xhr.setRequestHeader("Content-Type", "application/json");
@@ -31,7 +29,6 @@
 		}
 
 		function createChart(data) {
-			console.log("hi")
 			chart = document.getElementById('plot');
 			Plotly.newPlot(chart, data, {
 				showlegend: true,
@@ -42,9 +39,14 @@
 				responsive: true
 			});
 		}
-		requestJson("/api/airport/{{params.icao}}/performanceChart.json", createChart)
-
-	</script>
-</body>
-
+		function updateChart(data) {
+			console.log(data)
+			chart = document.getElementById('plot');
+			Plotly.restyle(chart, data);
+		}
+		setInterval(requestJson, 15*1000, "/api/airport/{{params.icao}}/performanceChart.json", createChart)
+		requestJson(requestJson("/api/airport/{{params.icao}}/performanceChart.json",
+		 createChart))
+    </script>
+  </body>
 </html>

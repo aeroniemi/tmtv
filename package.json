@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "watch": "node ./capture.js watch",
-    "server": "node ./server.js serve"
+    "server": "node ./server.js serve",
+    "past": "node ./server.js past",
+    "live": "node ./server.js live"
   },
   "author": "",
   "license": "MIT",
