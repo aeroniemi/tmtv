@@ -291,11 +291,12 @@ function mergeIdentities(table) {
                 final[newCid].flightplan.arrival != pilot.flightplan.arrival
               ) {
                 if (final[newCid].diverted === undefined) {
-                  // if (final[newCid].flightplan.arrival == "EGKK") {
-                  //   console.log(
-                  //     `${pilot.callsign} Might have diverted from ${final[newCid].flightplan.arrival} to ${pilot.flightplan.arrival} `
-                  //   );
-                  // }
+                  if (final[newCid].flightplan.arrival == "EGKK") {
+                    console.log(
+                      `${pilot.callsign} Might have diverted from ${final[newCid].flightplan.arrival} to ${pilot.flightplan.arrival} `
+                    );
+                  }
+
                   final[newCid].diverted = pilot.flightplan.arrival;
                 }
               }
@@ -349,13 +350,15 @@ function initialFileLoad(files) {
 exports.initialFileLoad = initialFileLoad;
 async function liveMerge(data, hours) {
   var oldest = dayjs().subtract(hours, "hours").subtract(20, "minutes");
-  // console.log(pilotData);
-  pilotData.forEach((time, key) => {
-    if (dayjs(time.general.update_timestamp).isBefore(oldest)) {
-      console.log(`${key} is too old - deleting`);
-      delete pilotData[key];
-    }
-  });
+  console.log(pilotData.length);
+  if (pilotData.length > 0) {
+    pilotData.forEach((time, key) => {
+      if (dayjs(time.general.update_timestamp).isBefore(oldest)) {
+        console.log(`${key} is too old - deleting`);
+        pilotData.splice(key, 1);
+      }
+    });
+  }
   pilotData.push(data);
   var plt = await mergeIdentities(pilotData);
   return plt;
@@ -563,9 +566,27 @@ function workOutFlightPhases(flight) {
         // Taxi
         // -------------------------------------------------------------------
         if (currentState == CONSTS.STATE.TAXI) {
-          if (moment.groundspeed > 50) {
+          if (moment.groundspeed > 50 && moment.altitude > 500) {
             changeState(CONSTS.STATE.CLIMB, moment.timestamp);
-            defineEvent(CONSTS.EVENT.TAKEOFF, moment.timestamp);
+            var distance = turf.distance(
+              turf.point([moment.longitude, moment.latitude]),
+              turf.point([-0.185905, 51.14997])
+            );
+
+            if (flight.flightplan.departure == "EGKK") {
+              // if (moment.groundspeed > 150) console.log(moment);
+              if (distance < 10) {
+                defineEvent(CONSTS.EVENT.TAKEOFF, moment.timestamp);
+              }
+              //   } else {
+              //     console.log(
+              //       `${flight.callsign}, ${distance}`,
+              //       flight.flightplan
+              //     );
+              //   }
+              // } else {
+              //   defineEvent(CONSTS.EVENT.TAKEOFF, moment.timestamp);
+            }
             return;
           }
         }
@@ -598,7 +619,7 @@ function workOutFlightPhases(flight) {
         // descent
         // -------------------------------------------------------------------
         if (currentState == CONSTS.STATE.DESCENT) {
-          if (moment.groundspeed < 50) {
+          if (moment.groundspeed < 30) {
             changeState(CONSTS.STATE.ARRIVAL, moment.timestamp);
             defineEvent(CONSTS.EVENT.LANDING, moment.timestamp);
             return;
@@ -610,7 +631,7 @@ function workOutFlightPhases(flight) {
         if (currentState == CONSTS.STATE.ARRIVAL) {
           if (moment.groundspeed > 50) {
             changeState(CONSTS.STATE.CLIMB, moment.timestamp);
-            defineEvent(CONSTS.EVENT.TAKEOFF, moment.timestamp);
+            // defineEvent(CONSTS.EVENT.TAKEOFF, moment.timestamp);
             return;
           }
         }
@@ -619,9 +640,7 @@ function workOutFlightPhases(flight) {
     flight.log.forEach(identPhase);
     flight.phases = states;
     flight.events = events;
-    // if (flight.callsign == "LOT2021") {
-    //   var sub = flight;
-    //   delete flight.log;
+    // if (flight.callsign == "EZY8346") {
     //   console.log(flight);
     // }
     resolve(flight);

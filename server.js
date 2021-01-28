@@ -548,7 +548,7 @@ function watchDatafeed(hours) {
       pilotsArray = await activities.workOutAllFlightPhases(
         Object.values(parseResults)
       );
-      console.log(par);
+      // console.log(parseResults);
     }
   }, config.maximumDatafeedAge * 1000);
 }
