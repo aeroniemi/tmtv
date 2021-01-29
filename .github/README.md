@@ -9,11 +9,20 @@ It's built in ``nodejs``, so for starters you'll need to go install the latest v
 Then:
 - Clone this repository to a folder
 - Run ``npm install`` in the repository folder using your terminal of choice. This will install the dependencies of the app
+- You'll need to put the Airports.txt file from the GNS430 nav dataset into ``./navdata/`` for airport checking
 - That's all of the installation that is required!
 
 ## Usage
 ### Collecting data from the VATSIM datafeed
 - Run ``npm run watch``
+
+
+### Working with live data
+- Run ``npm run live``
+- It'll download from the datafeed, and automatically use any data that already exists that is less than 4 hours old
+### Working with past data
+- Run ``npm run past``
+- *Obviously to work with past data, you will need past data*
 
 ### Making pretty maps
 - The construction of pretty maps is dependent on two things:

@@ -150,13 +150,16 @@ async function runServerStartup() {
       features: [],
     };
     pilotsArray.forEach((flight) => {
-      if (flight.flightplan !== null && flight.log.length > 0) {
-        if (flight.flightplan.departure == icao) {
+      // console.log(flight);
+      if (flight.flightplan !== null && flight.log && flight.log.length > 0) {
+        if (
+          flight.flightplan.departure == icao ||
+          flight.flightplan.destination == icao
+        ) {
           var plane = activities.convertLogToGeoJson(flight.log);
-          plane.properties = flight;
+          Object.assign(plane.properties, flight);
           delete plane.properties.log;
-          planes.features.push(plane);
-        } else if (flight.flightplan.destination == icao) {
+          // console.log(plane);
           planes.features.push(plane);
         }
       }
