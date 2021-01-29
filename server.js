@@ -62,6 +62,7 @@ async function runServerStartup() {
     res.render("generic", {
       apiUrl: "aircraft/",
       mapboxToken: config.mapboxToken,
+      mapboxMapId: config.mapId,
     });
   });
   app.get("/map/airport/:icao", function (req, res, next) {
@@ -69,18 +70,21 @@ async function runServerStartup() {
     res.render("generic", {
       apiUrl: `airport/${icao}`,
       mapboxToken: config.mapboxToken,
+      mapboxMapId: config.mapId,
     });
   });
   app.get("/map/sector/:id", function (req, res, next) {
     res.render("generic", {
       apiUrl: `/sector/${req.params.id}`,
       mapboxToken: config.mapboxToken,
+      mapboxMapId: config.mapId,
     });
   });
   app.get("/map/frequency/:id", function (req, res, next) {
     res.render("generic", {
       apiUrl: `frequency/${req.params.id}`,
       mapboxToken: config.mapboxToken,
+      mapboxMapId: config.mapId,
     });
   });
 
@@ -88,6 +92,7 @@ async function runServerStartup() {
     res.render("generic", {
       apiUrl: `sector/sectors.geojson`,
       mapboxToken: config.mapboxToken,
+      mapboxMapId: config.mapId,
       additionalFunctions:
         "requestJson('/api/sector/sectors.geojson', addSectors)",
     });

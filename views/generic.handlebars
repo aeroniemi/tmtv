@@ -38,9 +38,11 @@
 L.mapbox.accessToken = `{{
         mapboxToken
       }}`;
+L.mapbox.mapId = `{{
+        mapboxMapId
+      }}`;
 var mapboxTiles = L.tileLayer(
-  "https://api.mapbox.com/styles/v1/aeroniemi/ckjyvdfe01dnc17ppgsl0riga/tiles/256/{z}/{x}/{y}?access_token=" +
-    L.mapbox.accessToken,
+  `https://api.mapbox.com/styles/v1/${L.mapbox.mapId}/tiles/256/{z}/{x}/{y}?access_token=${L.mapbox.accessToken}`,
   {
     attribution:
       `©
