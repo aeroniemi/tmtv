@@ -29,7 +29,9 @@ async function pastDataSetup(start, end) {
   // var controllers = await activities.readControllers();
   // var inheritance = await activities.readInheritance();
   activities.setAirports(await activities.loadAirports());
-  var files = await activities.getResultsInAgeRange(start, end);
+  var files = await activities.getResultsInAgeRange(start, end).catch((err) => {
+    throw err;
+  });
   var parseResults = await activities.initialFileLoad(files[1]);
   pilotsArray = parseResults.body;
   pilotsObj = parseResults.bodyObj;
@@ -584,12 +586,13 @@ function watchDatafeed(hours) {
 // Live data setup
 // -----------------------------------------------------------------------------
 async function liveDataSetup(hours) {
-  var [newest, all] = await activities.getResultsInAgeRange(
-    dayjs().subtract(hours, "hours"),
-    dayjs()
-  );
+  var [newest, all] = await activities
+    .getResultsInAgeRange(dayjs().subtract(hours, "hours"), dayjs())
+    .catch(() => {
+      throw new Error("No valid past data, continuing with live only");
+    });
   if (newest === null) {
-    return;
+    throw new Error("No valid past data, continuing with live only");
   }
   activities.setAirports(await activities.loadAirports());
   // console.log(activities.airports["EGKK"]);
@@ -605,7 +608,7 @@ async function liveDataSetup(hours) {
 // -----------------------------------------------------------------------------
 async function startLive(hours) {
   expect(hours).to.be.a("number");
-  liveDataSetup(hours);
+  liveDataSetup(hours).catch((err) => console.log(chalk.red(err.message)));
   watchDatafeed(hours);
   runServerStartup();
   return;
@@ -614,8 +617,11 @@ async function startLive(hours) {
 // Startup for the live server
 // -----------------------------------------------------------------------------
 async function startPast(start, end) {
-  await pastDataSetup(start, end);
-  runServerStartup();
+  await pastDataSetup(start, end).catch((err) => {
+    // console.log(chalk.red("No valid past data found"));
+    return Promise.reject("No valid past data found");
+  });
+  await runServerStartup();
   return;
 }
 // -----------------------------------------------------------------------------
@@ -655,7 +661,9 @@ var argv = require("yargs/yargs")(process.argv.slice(2))
       ) {
         throw new Error("Start time is not before end time");
       }
-      startPast(argv.start, argv.end);
+      startPast(argv.start, argv.end).catch((err) =>
+        console.log(chalk.red(err))
+      );
     }
   )
   .command(
@@ -674,6 +682,6 @@ var argv = require("yargs/yargs")(process.argv.slice(2))
           "Defined hours is bad - needs to be a int between 1 and 48"
         );
       }
-      startLive(argv.hours);
+      startLive(argv.hours).catch((err) => console.log(chalk.red(err)));
     }
   ).argv;
