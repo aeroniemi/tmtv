@@ -7,9 +7,66 @@ const apiUrl = "https://data.vatsim.net/v3/vatsim-data.json";
 const turf = require("@turf/turf");
 const dayjs = require("dayjs");
 const CONSTS = require("./consts.js");
+const changeCase = require("change-case");
+var airports = {};
+const config = require("./config.js");
+const readline = require("readline");
 // const momentDate = require("moment");
 const { group } = require("console");
 var pilotData = {};
+function titleCase(str) {
+  return str
+    .toLowerCase()
+    .split(" ")
+    .map(function (word) {
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+// -----------------------------------------------------------------------------
+//  Load up airports
+// -----------------------------------------------------------------------------
+exports.setAirports = function (apts) {
+  airports = apts;
+  return;
+};
+exports.loadAirports = function loadAirports() {
+  return new Promise(function (resolve, reject) {
+    expect(config.gns430Path).to.be.a("string");
+    expect(config.useGns430).to.be.a("boolean");
+    expect(config.useGns430).to.be.true;
+    const readInterface = readline.createInterface({
+      input: fs.createReadStream(config.gns430Path),
+      console: false,
+    });
+    var results = {};
+    readInterface.on("line", function (line) {
+      if (line.substr(0, 1) == "A") {
+        // airport
+        var parts = line.split(",");
+        var airport = {
+          icao: parts[1],
+          name: changeCase.capitalCase(parts[2]),
+          latitude: Number(parts[3]),
+          longitude: Number(parts[4]),
+          altitude: parseInt(parts[5]),
+          maxRunwayLength: parseInt(parts[8] * 0.3048),
+        };
+        if (airport.maxRunwayLength > 1000 || airport.icao.match(/^(EG)\w+/)) {
+          results[airport.icao] = airport;
+        }
+      }
+    });
+    readInterface.on("close", () => {
+      console.log(
+        `Finished reading airports - found ${Object.keys(results).length}`
+      );
+      resolve(results);
+      return;
+    });
+  });
+};
+
 // -----------------------------------------------------------------------------
 // Download related
 // -----------------------------------------------------------------------------
@@ -108,7 +165,7 @@ function getResultsInAgeRange(start, end) {
           resolve([null, inRange]);
           return;
         }
-        console.log(inRange);
+        // console.log(inRange);
         newest = Math.max(...inRange);
         resolve([newest, inRange]);
         return;
@@ -240,7 +297,7 @@ function managePilots(data) {
 
 function mergeIdentities(table) {
   return new Promise(function (resolve, reject) {
-    // console.log(table)
+    expect(table).to.be.a("array");
     var promises = table.map(function (ele) {
       return managePilots(ele);
     });
@@ -291,11 +348,11 @@ function mergeIdentities(table) {
                 final[newCid].flightplan.arrival != pilot.flightplan.arrival
               ) {
                 if (final[newCid].diverted === undefined) {
-                  if (final[newCid].flightplan.arrival == "EGKK") {
-                    console.log(
-                      `${pilot.callsign} Might have diverted from ${final[newCid].flightplan.arrival} to ${pilot.flightplan.arrival} `
-                    );
-                  }
+                  // if (final[newCid].flightplan.arrival == "EGKK") {
+                  //   console.log(
+                  //     `${pilot.callsign} Might have diverted from ${final[newCid].flightplan.arrival} to ${pilot.flightplan.arrival} `
+                  //   );
+                  // }
 
                   final[newCid].diverted = pilot.flightplan.arrival;
                 }
@@ -331,8 +388,8 @@ parseResults = {
 function initialFileLoad(files) {
   return new Promise(function (acc, reject) {
     assembleUsefulTable(files).then((table) => {
-      pilotData = table;
-      mergeIdentities(table).then((res) => {
+      pilotData = Object.values(table);
+      mergeIdentities(pilotData).then((res) => {
         var array = Object.values(res);
         console.log(`Summary Statistics:
         Flights managed: ${array.length}`);
@@ -350,7 +407,7 @@ function initialFileLoad(files) {
 exports.initialFileLoad = initialFileLoad;
 async function liveMerge(data, hours) {
   var oldest = dayjs().subtract(hours, "hours").subtract(20, "minutes");
-  console.log(pilotData.length);
+  // console.log(pilotData.length);
   if (pilotData.length > 0) {
     pilotData.forEach((time, key) => {
       if (dayjs(time.general.update_timestamp).isBefore(oldest)) {
@@ -478,7 +535,38 @@ function readInheritance() {
 exports.readSectors = readSectors;
 exports.readControllers = readControllers;
 exports.readInheritance = readInheritance;
-
+function checkDistance(icao, position) {
+  try {
+    expect(airports[icao]).to.be.a("object");
+    expect(airports[icao].latitude).to.be.a("number");
+    expect(airports[icao].longitude).to.be.a("number");
+  } catch (err) {
+    // console.log(
+    //   `Airport ${icao} not found, total ${
+    //     Object.keys(airports).length
+    //   } airports`,
+    //   chalk.red(err.message)
+    // );
+    return Infinity;
+  }
+  try {
+    var distance = parseInt(
+      turf.distance(
+        turf.point(position),
+        turf.point([airports[icao].longitude, airports[icao].latitude]),
+        { units: "kilometers" }
+      )
+    );
+    expect(distance).to.be.a("number");
+  } catch (err) {
+    console.log(
+      `Distance between ${position} and ${icao} is invalid`,
+      chalk.red(err.message)
+    );
+    return Infinity;
+  }
+  return distance;
+}
 function workOutFlightPhases(flight) {
   return new Promise(function (resolve, reject) {
     if (flight.flightplan === null) {
@@ -568,25 +656,15 @@ function workOutFlightPhases(flight) {
         if (currentState == CONSTS.STATE.TAXI) {
           if (moment.groundspeed > 50 && moment.altitude > 500) {
             changeState(CONSTS.STATE.CLIMB, moment.timestamp);
-            var distance = turf.distance(
-              turf.point([moment.longitude, moment.latitude]),
-              turf.point([-0.185905, 51.14997])
-            );
-
-            if (flight.flightplan.departure == "EGKK") {
-              // if (moment.groundspeed > 150) console.log(moment);
-              if (distance < 10) {
-                defineEvent(CONSTS.EVENT.TAKEOFF, moment.timestamp);
-              }
-              //   } else {
-              //     console.log(
-              //       `${flight.callsign}, ${distance}`,
-              //       flight.flightplan
-              //     );
-              //   }
-              // } else {
-              //   defineEvent(CONSTS.EVENT.TAKEOFF, moment.timestamp);
+            var distance = checkDistance(flight.flightplan.arrival, [
+              moment.longitude,
+              moment.latitude,
+            ]);
+            if (distance < 10) {
+              defineEvent(CONSTS.EVENT.TAKEOFF, moment.timestamp);
+            } else {
             }
+
             return;
           }
         }
@@ -619,9 +697,29 @@ function workOutFlightPhases(flight) {
         // descent
         // -------------------------------------------------------------------
         if (currentState == CONSTS.STATE.DESCENT) {
-          if (moment.groundspeed < 30) {
+          if (moment.groundspeed < 50) {
             changeState(CONSTS.STATE.ARRIVAL, moment.timestamp);
-            defineEvent(CONSTS.EVENT.LANDING, moment.timestamp);
+            var distance = checkDistance(flight.flightplan.arrival, [
+              moment.longitude,
+              moment.latitude,
+            ]);
+            if (distance < 10) {
+              defineEvent(CONSTS.EVENT.LANDING, moment.timestamp);
+              // console.log(
+              //   `${flight.callsign} has landed at destination ${flight.flightplan.arrival}, was ${distance}km away`
+              // );
+            } else {
+              console.log(
+                chalk.yellow(
+                  `${flight.callsign} has landed ${chalk.inverse(
+                    distance
+                  )}km from destination ${
+                    flight.flightplan.arrival
+                  } - something is wrong`
+                )
+              );
+            }
+
             return;
           }
         }
@@ -688,4 +786,17 @@ exports.stringifyCsv = function stringifyCsv(data) {
     output += "\r\n";
   });
   return output;
+};
+exports.sma = function (array, maxPeriod) {
+  var results = [];
+  var avgArray = [];
+  array.forEach((ele, ind) => {
+    avgArray.push(ele);
+    if (avgArray.length > maxPeriod) {
+      avgArray.splice(0, 1);
+    }
+    var avg = avgArray.reduce((a, b) => a + b, 0) / avgArray.length;
+    results.push(avg);
+  });
+  return results;
 };

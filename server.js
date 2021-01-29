@@ -8,7 +8,7 @@ const dayjs = require("dayjs");
 const expect = require("chai").expect;
 const exphbs = require("express-handlebars");
 const express = require("express");
-const sma = require("sma");
+// const sma = require("sma");
 const CONSTS = require("./consts.js");
 const isBetween = require("dayjs/plugin/isBetween");
 dayjs.extend(isBetween);
@@ -28,6 +28,7 @@ async function pastDataSetup(start, end) {
   // var sectors = await activities.readSectors();
   // var controllers = await activities.readControllers();
   // var inheritance = await activities.readInheritance();
+  activities.setAirports(await activities.loadAirports());
   var files = await activities.getResultsInAgeRange(start, end);
   var parseResults = await activities.initialFileLoad(files[1]);
   pilotsArray = parseResults.body;
@@ -52,18 +53,19 @@ async function runServerStartup() {
   });
   app.get("/aircraft/:id", function (req, res, next) {
     var id = req.params.id;
-    var apiUrl = `/aircraft/${req.params.id}`;
+    var apiUrl = `aircraft/${req.params.id}`;
     res.render("aircraftById", { apiUrl: apiUrl });
   });
   app.get("/map/all", function (req, res, next) {
     res.render("generic", {
-      apiUrl: "/aircraft/",
+      apiUrl: "aircraft/",
       mapboxToken: config.mapboxToken,
     });
   });
   app.get("/map/airport/:icao", function (req, res, next) {
+    var icao = req.params.icao.toUpperCase();
     res.render("generic", {
-      apiUrl: `airport/${req.params.icao}`,
+      apiUrl: `airport/${icao}`,
       mapboxToken: config.mapboxToken,
     });
   });
@@ -75,14 +77,14 @@ async function runServerStartup() {
   });
   app.get("/map/frequency/:id", function (req, res, next) {
     res.render("generic", {
-      apiUrl: `/frequency/${req.params.id}`,
+      apiUrl: `frequency/${req.params.id}`,
       mapboxToken: config.mapboxToken,
     });
   });
 
   app.get("/map/sector/", function (req, res, next) {
     res.render("generic", {
-      apiUrl: `/sector/sectors.geojson`,
+      apiUrl: `sector/sectors.geojson`,
       mapboxToken: config.mapboxToken,
       additionalFunctions:
         "requestJson('/api/sector/sectors.geojson', addSectors)",
@@ -90,7 +92,7 @@ async function runServerStartup() {
     // res.render("generic", { apiUrl: `/sector/sectors.geojson`, mapboxToken: config.mapboxToken, additionalFunctions: "requestJson('/api/sector/sectors.geojson', addSectors)" })
   });
   app.get("/map/all/heat", function (req, res, next) {
-    res.render("heat", { apiUrl: "/aircraft/heat" });
+    res.render("heat", { apiUrl: "aircraft/heat" });
   });
   app.get("/api/aircraft", function (req, res, next) {
     var id = req.params.id;
@@ -142,18 +144,19 @@ async function runServerStartup() {
     res.send(planes);
   });
   app.get("/api/airport/:icao", function (req, res, next) {
+    var icao = req.params.icao.toUpperCase();
     var planes = {
       type: "FeatureCollection",
       features: [],
     };
     pilotsArray.forEach((flight) => {
       if (flight.flightplan !== null && flight.log.length > 0) {
-        if (flight.flightplan.departure == req.params.icao) {
+        if (flight.flightplan.departure == icao) {
           var plane = activities.convertLogToGeoJson(flight.log);
           plane.properties = flight;
           delete plane.properties.log;
           planes.features.push(plane);
-        } else if (flight.flightplan.destination == req.params.icao) {
+        } else if (flight.flightplan.destination == icao) {
           planes.features.push(plane);
         }
       }
@@ -168,13 +171,16 @@ async function runServerStartup() {
     res.render("opsRate", req);
   });
   app.get("/api/airport/:icao/performance.json", function (req, res, next) {
-    var ta = calculateAirportPerformance(req.params.icao);
+    var icao = req.params.icao.toUpperCase();
+    var ta = calculateAirportPerformance(icao);
+    res.header("Content-Type", "text/json");
     res.send(JSON.stringify(ta));
   });
   app.get(
     "/api/airport/:icao/performanceChart.json",
     function (req, res, next) {
-      var ta = calculateAirportPerformance(req.params.icao);
+      var icao = req.params.icao.toUpperCase();
+      var ta = calculateAirportPerformance(icao);
       var newTable = [
         {
           x: [],
@@ -205,35 +211,51 @@ async function runServerStartup() {
           name: "Top of Descent",
         },
       ];
-      ta.forEach((slot) => {
-        newTable[0].x.push(dayjs(slot.time).toISOString());
-        newTable[1].x.push(dayjs(slot.time).toISOString());
-        newTable[2].x.push(dayjs(slot.time).toISOString());
-        newTable[3].x.push(dayjs(slot.time).toISOString());
+      ta.forEach((slot, index) => {
+        if (index >= 1) {
+          newTable[0].x.push(dayjs(slot.time).toISOString());
+          newTable[1].x.push(dayjs(slot.time).toISOString());
+          newTable[2].x.push(dayjs(slot.time).toISOString());
+          newTable[3].x.push(dayjs(slot.time).toISOString());
 
-        newTable[0].raw.push(slot.events[1] * 60);
-        newTable[1].raw.push(slot.events[5] * 60);
-        newTable[2].raw.push(slot.events[0] * 60);
-        newTable[3].raw.push(slot.events[4] * 60);
+          newTable[0].raw.push(slot.events[1] * 60);
+          newTable[1].raw.push(slot.events[5] * 60);
+          newTable[2].raw.push(slot.events[0] * 60);
+          newTable[3].raw.push(slot.events[4] * 60);
+        }
       });
-      newTable[0].y = sma(newTable[0].raw, 20);
-      newTable[1].y = sma(newTable[1].raw, 20);
-      newTable[2].y = sma(newTable[2].raw, 20);
-      newTable[3].y = sma(newTable[3].raw, 20);
-      newTable[0].x.splice(0, 19);
-      newTable[1].x.splice(0, 19);
-      newTable[2].x.splice(0, 19);
-      newTable[3].x.splice(0, 19);
-      console.log(`${newTable[0].x.length},${newTable[0].y.length}`);
+      newTable[0].y = activities.sma(
+        newTable[0].raw,
+        config.movingAveragePeriod
+      );
+      newTable[1].y = activities.sma(
+        newTable[1].raw,
+        config.movingAveragePeriod
+      );
+      newTable[2].y = activities.sma(
+        newTable[2].raw,
+        config.movingAveragePeriod
+      );
+      newTable[3].y = activities.sma(
+        newTable[3].raw,
+        config.movingAveragePeriod
+      );
+      // newTable[0].x.splice(0, config.movingAveragePeriod - 1);
+      // newTable[1].x.splice(0, config.movingAveragePeriod - 1);
+      // newTable[2].x.splice(0, config.movingAveragePeriod - 1);
+      // newTable[3].x.splice(0, config.movingAveragePeriod - 1);
+      // console.log(`${newTable[0].x.length},${newTable[0].y.length}`);
       delete newTable[0].raw;
       delete newTable[1].raw;
       delete newTable[2].raw;
       delete newTable[3].raw;
+      res.header("Content-Type", "text/json");
       res.send(JSON.stringify(newTable));
     }
   );
   app.get("/api/airport/:icao/performance.csv", function (req, res, next) {
-    var ta = calculateAirportPerformance(req.params.icao);
+    var icao = req.params.icao.toUpperCase();
+    var ta = calculateAirportPerformance(icao);
     var csv = activities.stringifyCsv(ta);
     res.header("Content-Type", "text/csv");
     res.send(csv);
@@ -241,7 +263,8 @@ async function runServerStartup() {
   app.get(
     "/api/airport/:icao/performanceChartLatest.json",
     function (req, res, next) {
-      var ta = calculateAirportPerformance(req.params.icao);
+      var icao = req.params.icao.toUpperCase();
+      var ta = calculateAirportPerformance(icao);
       var newTable = [
         {
           x: [],
@@ -283,24 +306,26 @@ async function runServerStartup() {
         newTable[2].raw.push(slot.events[0] * 60);
         newTable[3].raw.push(slot.events[4] * 60);
       });
-      newTable[0].y = sma(newTable[0].raw, 20);
-      newTable[1].y = sma(newTable[1].raw, 20);
-      newTable[2].y = sma(newTable[2].raw, 20);
-      newTable[3].y = sma(newTable[3].raw, 20);
+      newTable[0].y = activities.sma(newTable[0].raw, 20);
+      newTable[1].y = activities.sma(newTable[1].raw, 20);
+      newTable[2].y = activities.sma(newTable[2].raw, 20);
+      newTable[3].y = activities.sma(newTable[3].raw, 20);
       newTable[0].x.splice(0, 19);
       newTable[1].x.splice(0, 19);
       newTable[2].x.splice(0, 19);
       newTable[3].x.splice(0, 19);
-      console.log(`${newTable[0].x.length},${newTable[0].y.length}`);
+      // console.log(`${newTable[0].x.length},${newTable[0].y.length}`);
       delete newTable[0].raw;
       delete newTable[1].raw;
       delete newTable[2].raw;
       delete newTable[3].raw;
+      res.header("Content-Type", "text/json");
       res.send(JSON.stringify(newTable));
     }
   );
   app.get("/api/airport/:icao/performance.csv", function (req, res, next) {
-    var ta = calculateAirportPerformance(req.params.icao);
+    var icao = req.params.icao.toUpperCase();
+    var ta = calculateAirportPerformance(icao);
     var csv = activities.stringifyCsv(ta);
     res.header("Content-Type", "text/csv");
     res.send(csv);
@@ -407,7 +432,7 @@ async function runServerStartup() {
       ownedSectors[fac] = [];
     });
     inheritance.forEach((unit) => {
-      console.log(unit.id);
+      // console.log(unit.id);
       if (unit.order.length > 0) {
         unit.order.some((pos) => {
           // console.log(onlineFacilities, pos)
@@ -563,9 +588,11 @@ async function liveDataSetup(hours) {
   if (newest === null) {
     return;
   }
+  activities.setAirports(await activities.loadAirports());
+  // console.log(activities.airports["EGKK"]);
   // console.log(newest, all);
   var parseResults = await activities.initialFileLoad(all);
-  console.log("here");
+  // console.log("here");
   pilotsArray = await activities.workOutAllFlightPhases(parseResults.body);
   pilotsObj = parseResults.bodyObj;
   return parseResults;

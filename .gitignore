@@ -109,3 +109,4 @@ dist
 !package.json
 !package-lock.json
 !.vscode/settings.json
+navdata/Airports.txt
