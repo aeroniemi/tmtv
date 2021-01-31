@@ -1,4 +1,5 @@
 module.exports = {
+  mapId: "aeroniemi/ckjyvdfe01dnc17ppgsl0riga",
   mapboxToken:
     "pk.eyJ1IjoiYWVyb25pZW1pIiwiYSI6ImNpdWJjeHY5djAwMGUyeW80ZTR4ZjgwN3MifQ.PkPF6NIAFU3fOZgDTpCHgA",
   port: 8080,
